@@ -30,8 +30,8 @@ describe("renderIssue without a footer", () => {
   it("sends exactly as before: no personal block", async () => {
     const email = await renderIssue(parts);
     expect(email.html).not.toContain("data-personal-block");
-    expect(email.html).not.toContain("Your bookshelf");
-    expect(email.text).not.toContain("Your bookshelf");
+    expect(email.html).not.toContain("Open your bookshelf");
+    expect(email.text).not.toContain("Open your bookshelf");
     expect(email.html).toContain(`https://studio.test/t/c/d1?u=${encodeURIComponent("https://blog.test/p")}`);
     expect(email.text).toBe(`Week\n\nRead the post (https://blog.test/p).\n\n--\n1 Road, Town\nUnsubscribe: https://studio.test/n/letters/unsubscribe/tok?d=d1\n`);
     expect(email.headers["List-Unsubscribe"]).toBe("<https://studio.test/n/letters/unsubscribe/tok?d=d1>");
@@ -49,7 +49,7 @@ describe("renderIssue with a footer", () => {
     expect(block).toBeGreaterThan(body);
     expect(address).toBeGreaterThan(block);
     expect(unsubscribe).toBeGreaterThan(address);
-    expect(html).toContain("Hi Sarah,");
+    expect(html).not.toContain("Hi Sarah,");
     expect(html).toContain(`src="${footer.coverUrl}"`);
   });
 
@@ -70,13 +70,13 @@ describe("renderIssue with a footer", () => {
   it("adds a short text version before the postal address", async () => {
     const { text } = await renderIssue({ ...parts, footer: { block: footer, key: "k" } });
     expect(text).toBe(
-      `Week\n\nRead the post (https://blog.test/p).\n\nHi Sarah,\nShare your book with family and friends.\nShare Your Book: ${footer.buttonUrl}\n\n--\n1 Road, Town\nUnsubscribe: https://studio.test/n/letters/unsubscribe/tok?d=d1\n`,
+      `Week\n\nRead the post (https://blog.test/p).\n\nShare your book with family and friends.\nShare Your Book: ${footer.buttonUrl}\n\n--\n1 Road, Town\nUnsubscribe: https://studio.test/n/letters/unsubscribe/tok?d=d1\n`,
     );
   });
 
   it("carries the fallback block as it is", async () => {
     const { html } = await renderIssue({ ...parts, footer: { block: FALLBACK_FOOTER, key: "k" } });
-    expect(html).toContain("Come and see what your child&#39;s book looks like.");
+    expect(html).toContain("What does your child&#39;s book look like?");
     expect(html).toContain("Make Your Child&#39;s Book");
   });
 });
@@ -94,7 +94,7 @@ describe("renderTest", () => {
   it("ends with the sample block for the chosen state, untracked", () => {
     const email = renderTest(newsletter, campaign, sampleFooter("finish", "Batsirai"));
     expect(email.html).toContain("data-personal-block");
-    expect(email.html).toContain("Hi Batsirai,");
+    expect(email.html).not.toContain("Hi Batsirai,");
     expect(email.html).toContain("Preview Your Child&#39;s Book");
     expect(email.html).not.toContain("/t/c/");
     expect(email.html.indexOf("data-personal-block")).toBeLessThan(email.html.indexOf("1 Road, Town"));

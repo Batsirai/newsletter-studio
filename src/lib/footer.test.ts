@@ -23,9 +23,10 @@ const finish: Footer = {
 };
 
 describe("renderFooterBlock", () => {
-  it("shows the greeting, a linked 200px rounded cover, the headline, one button and the bookshelf link, in that order", () => {
+  it("shows no second greeting, a linked 200px rounded cover, the headline, one button and the bookshelf link, in that order", () => {
     const html = renderFooterBlock(finish);
-    const order = ["Hi Sarah,", `src="${finish.coverUrl}"`, "Mia&#39;s book is waiting for you.", "Preview Your Child&#39;s Book", "Your bookshelf"];
+    const order = [`src="${finish.coverUrl}"`, "Mia&#39;s book is waiting for you.", "Preview Your Child&#39;s Book", "Open your bookshelf"];
+    expect(html).not.toContain("Hi Sarah,");
     const at = order.map((s) => html.indexOf(s));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -51,7 +52,7 @@ describe("renderFooterBlock", () => {
     const html = renderFooterBlock(FALLBACK_FOOTER);
     expect(html).not.toContain("Hi ");
     expect(html).not.toMatch(/\{\{|undefined|null/);
-    expect(html).toContain("Come and see what your child&#39;s book looks like.");
+    expect(html).toContain("What does your child&#39;s book look like?");
     expect(html).toContain("Make Your Child&#39;s Book");
   });
 
@@ -67,7 +68,6 @@ describe("renderFooterBlock", () => {
     expect(html).not.toContain("<b>Sam</b>");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<img src=x");
-    expect(html).toContain("Hi &lt;b&gt;Sam&lt;/b&gt;,");
     expect(html).toContain("Go &amp; see");
     expect(html).toContain('href="https://a.test/x?a=1&amp;b=&quot;2&quot;"');
   });
@@ -83,7 +83,7 @@ describe("renderFooterBlock", () => {
     expect(html).not.toContain("data:text");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("data-button");
-    expect(html).not.toContain("Your bookshelf");
+    expect(html).not.toContain("Open your bookshelf");
     expect(html).toContain("Mia&#39;s book is waiting for you.");
   });
 
@@ -119,7 +119,7 @@ describe("footer copy", () => {
       greeting: "",
       coverUrl: "https://home.alreadylovedkids.com/images/email/sample-cover-ava.jpg",
       coverAlt: "A sample AlreadyLoved book cover",
-      headline: "Come and see what your child's book looks like.",
+      headline: "What does your child's book look like?",
       buttonLabel: "Make Your Child's Book",
       buttonUrl: "https://home.alreadylovedkids.com/welcome?utm_source=email&utm_medium=footer&utm_campaign=next_step_start",
       bookshelfUrl: "https://home.alreadylovedkids.com/home?utm_source=email&utm_medium=footer&utm_campaign=next_step_start",
@@ -135,8 +135,8 @@ describe("footer copy", () => {
 
 describe("footerText", () => {
   it("is the headline and the button link", () => {
-    expect(footerText(finish)).toBe(`Hi Sarah,\nMia's book is waiting for you.\nPreview Your Child's Book: ${finish.buttonUrl}`);
-    expect(footerText(FALLBACK_FOOTER)).toBe(`Come and see what your child's book looks like.\nMake Your Child's Book: ${FALLBACK_FOOTER.buttonUrl}`);
+    expect(footerText(finish)).toBe(`Mia's book is waiting for you.\nPreview Your Child's Book: ${finish.buttonUrl}`);
+    expect(footerText(FALLBACK_FOOTER)).toBe(`What does your child's book look like?\nMake Your Child's Book: ${FALLBACK_FOOTER.buttonUrl}`);
   });
   it("leaves out a link that is not http(s)", () => {
     expect(footerText({ ...finish, greeting: "", buttonUrl: "javascript:x" })).toBe("Mia's book is waiting for you.");
@@ -224,5 +224,16 @@ describe("signed footer clicks", () => {
     expect(await verifyClick("other", "d1", finish.buttonUrl, sig)).toBe(false);
     expect(await verifyClick("key", "d1", finish.buttonUrl, "")).toBe(false);
     expect(await verifyClick("", "d1", finish.buttonUrl, sig)).toBe(false);
+  });
+});
+
+describe("the Playground line", () => {
+  it("shows under the bookshelf link when the app sends one, and is left out otherwise", () => {
+    const withPlay = { ...FALLBACK_FOOTER, play: { text: "Free for your kids: coloring pages and games", url: "https://alreadylovedkids.com/play" } };
+    const html = renderFooterBlock(withPlay);
+    expect(html).toContain('href="https://alreadylovedkids.com/play"');
+    expect(html.indexOf("Open your bookshelf")).toBeLessThan(html.indexOf("coloring pages"));
+    expect(renderFooterBlock(FALLBACK_FOOTER)).not.toContain("/play");
+    expect(renderFooterBlock({ ...withPlay, play: { text: "x", url: "javascript:x" } })).not.toContain("javascript:");
   });
 });

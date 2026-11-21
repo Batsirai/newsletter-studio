@@ -22,6 +22,8 @@ const footerSchema = z.object({
   // The "New from us" line: the newest letter or article. An older app sends none;
   // a malformed one is dropped so the reader still gets the block.
   news: z.object({ title: z.string(), url: z.string() }).nullish().catch(undefined),
+  // The free Playground line, sent only for a reader with no book yet.
+  play: z.object({ text: z.string(), url: z.string() }).nullish().catch(undefined),
 });
 export type Footer = z.infer<typeof footerSchema>;
 
@@ -39,7 +41,7 @@ export const FALLBACK_FOOTER: Footer = {
   greeting: "",
   coverUrl: SAMPLE_COVER,
   coverAlt: SAMPLE_ALT,
-  headline: "Come and see what your child's book looks like.",
+  headline: "What does your child's book look like?",
   buttonLabel: "Make Your Child's Book",
   buttonUrl: `${SITE}/welcome?${utm("start")}`,
   bookshelfUrl: `${SITE}/home?${utm("start")}`,
@@ -47,8 +49,8 @@ export const FALLBACK_FOOTER: Footer = {
 
 const SAMPLE_WORDS: Record<FooterState, Pick<Footer, "headline" | "buttonLabel" | "buttonUrl">> = {
   start: { headline: FALLBACK_FOOTER.headline, buttonLabel: FALLBACK_FOOTER.buttonLabel, buttonUrl: FALLBACK_FOOTER.buttonUrl },
-  finish: { headline: "Your child's book has already begun. Come and see it.", buttonLabel: "Preview Your Child's Book", buttonUrl: `${SITE}/home?${utm("finish")}` },
-  share: { headline: "Share your book with family and friends.", buttonLabel: "Share Your Book", buttonUrl: `${SITE}/home?${utm("share")}` },
+  finish: { headline: "Finish your book", buttonLabel: "Preview Your Child's Book", buttonUrl: `${SITE}/home?${utm("finish")}` },
+  share: { headline: "Share your book", buttonLabel: "Share Your Book", buttonUrl: `${SITE}/home?${utm("share")}` },
 };
 
 /** A sample block for a test send: the sample cover, the sender's own first name if known. */
@@ -76,18 +78,21 @@ export function renderFooterBlock(footer: Footer, track: (url: string) => string
   const cover = httpUrl(footer.coverUrl);
   const button = httpUrl(footer.buttonUrl);
   const bookshelf = httpUrl(footer.bookshelfUrl);
+  const play = footer.play ? httpUrl(footer.play.url) : null;
   const href = (url: string) => escapeHtml(track(url));
   const img = cover
     ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(footer.coverAlt)}" width="200" style="display:block;width:200px;max-width:100%;height:auto;margin:0 auto;border:0;border-radius:8px">`
     : "";
   const rows = [
-    footer.greeting.trim() ? `<p style="font-size:16px;line-height:1.6;color:${b.ink};margin:0 0 16px">${escapeHtml(footer.greeting.trim())}</p>` : "",
     img ? `<div style="margin:0 0 18px">${button ? `<a href="${href(button)}" style="text-decoration:none">${img}</a>` : img}</div>` : "",
     `<p style="font-family:${b.heading};font-size:20px;line-height:1.35;font-weight:600;color:${b.ink};margin:0 0 18px">${escapeHtml(footer.headline)}</p>`,
     button
       ? `<p style="margin:0"><a href="${href(button)}" data-button style="display:inline-block;padding:12px 22px;background-color:${b.accent};border-radius:999px;font-weight:600;text-decoration:none;color:#ffffff">${escapeHtml(footer.buttonLabel)}</a></p>`
       : "",
-    bookshelf ? `<p style="font-size:14px;line-height:1.6;margin:18px 0 0"><a href="${href(bookshelf)}" style="color:${b.muted};text-decoration:underline">Your bookshelf</a></p>` : "",
+    bookshelf ? `<p style="font-size:14px;line-height:1.6;margin:18px 0 0"><a href="${href(bookshelf)}" style="color:${b.muted};text-decoration:underline">Open your bookshelf</a></p>` : "",
+    play && footer.play?.text.trim()
+      ? `<p style="font-size:14px;line-height:1.6;margin:10px 0 0"><a href="${href(play)}" style="color:${b.link};text-decoration:underline">${escapeHtml(footer.play.text.trim())}</a></p>`
+      : "",
   ];
   return `<table role="presentation" data-personal-block width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${b.card};border:1px solid ${b.border};border-radius:12px">
 <tr><td align="center" style="padding:28px 28px 30px;font-family:${b.body};color:${b.ink};text-align:center">${rows.join("")}</td></tr></table>`;
@@ -127,10 +132,10 @@ export function sameLink(a: string, b: string | null | undefined): boolean {
   return x !== null && x === bareLink(b);
 }
 
-/** The block in the text/plain part: the greeting, the headline and the button's link. */
+/** The block in the text/plain part: the headline and the button's link (the letter already greets her). */
 export function footerText(footer: Footer): string {
   const button = httpUrl(footer.buttonUrl);
-  return [footer.greeting.trim(), footer.headline, button ? `${footer.buttonLabel}: ${button}` : ""].filter(Boolean).join("\n");
+  return [footer.headline, button ? `${footer.buttonLabel}: ${button}` : ""].filter(Boolean).join("\n");
 }
 
 export interface FooterConfig {
