@@ -10,11 +10,11 @@ describe("emailLayout", () => {
     preview: "A short preview",
   });
 
-  it("wraps the issue in the brand frame: cream page, white card, logo header", () => {
+  it("wraps the issue in the brand frame: cream page, banner header, white card", () => {
     expect(html).toContain(`background-color:${BRAND.page}`);
     expect(html).toContain(`background-color:${BRAND.card}`);
-    expect(html).toContain(`src="${BRAND.logoUrl}"`);
-    expect(html).toContain('alt="AlreadyLoved Letters"');
+    expect(html).toContain(`src="${BRAND.headerUrl}"`);
+    expect(html).toContain('alt="AlreadyLoved with Batsirai &amp; Aimee"');
     expect(html).toContain("<p>Hello</p>");
     expect(html).toContain("123 Main St");
   });
