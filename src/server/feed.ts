@@ -1,3 +1,4 @@
+import { blogIssueUrl } from "@/lib/blogLinks";
 import { mergeTags, renderMarkdown } from "@/lib/markdown";
 import { buildRss, type FeedIssue } from "@/lib/posts";
 import { feedIssues, publicNewsletter } from "./public";
@@ -15,7 +16,7 @@ export async function newsletterFeed(slug: string, origin: string) {
       slug: r.slug as string,
       previewText: r.previewText,
       sentAt: r.sentAt,
-      url: `${link}/p/${r.slug}`,
+      url: blogIssueUrl(newsletter.slug, r.slug as string) ?? `${link}/p/${r.slug}`,
       html: renderMarkdown(mergeTags(r.body, {})),
       markdown: mergeTags(r.body, {}),
     }));

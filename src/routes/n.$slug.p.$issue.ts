@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createElement as h } from "react";
+import { blogIssueUrl } from "@/lib/blogLinks";
 import { mergeTags, renderMarkdown } from "@/lib/markdown";
 import { ISSUE_PROSE } from "@/lib/prose";
 import { publicNewsletter, siteIssue } from "@/server/public";
@@ -14,6 +15,9 @@ export const Route = createFileRoute("/n/$slug/p/$issue")({
         if (!newsletter) return notFoundPage();
         const issue = await siteIssue(newsletter.id, params.issue);
         if (!issue) return notFoundPage();
+        // The blog is the one public copy of a letter (no duplicate for search).
+        const blog = blogIssueUrl(newsletter.slug, params.issue);
+        if (blog) return new Response(null, { status: 301, headers: { location: blog } });
         return publicPage(
           `${issue.subject} · ${newsletter.name}`,
           h("div", { className: "space-y-10" }, [

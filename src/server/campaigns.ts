@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import { blogIssueUrl } from "@/lib/blogLinks";
 import { campaigns, contactEvents, contacts, deliveries, newsletters } from "@/db/schema";
 import { slugify } from "@/lib/markdown";
 import { reviewCampaign } from "@/lib/review";
@@ -257,7 +258,7 @@ export async function processCampaign(campaignId: string): Promise<void> {
     .returning({ id: deliveries.id, contactId: deliveries.contactId });
 
   const webUrl =
-    campaign.destination === "both" && newsletter.websiteEnabled && campaign.slug ? `${origin}/n/${newsletter.slug}/p/${campaign.slug}` : null;
+    campaign.destination === "both" && newsletter.websiteEnabled && campaign.slug ? (blogIssueUrl(newsletter.slug, campaign.slug) ?? `${origin}/n/${newsletter.slug}/p/${campaign.slug}`) : null;
 
   for (const delivery of claimed) {
     const [current] = await db.select({ status: campaigns.status }).from(campaigns).where(eq(campaigns.id, campaignId));
