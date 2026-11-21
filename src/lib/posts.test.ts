@@ -68,3 +68,14 @@ describe("buildRss", () => {
     expect(xml).toContain("<![CDATA[<p>hi ]]]]><![CDATA[> there</p>]]>");
   });
 });
+
+describe("FeedIssue markdown", () => {
+  it("keeps the Markdown source out of the RSS body", () => {
+    const rss = buildRss(
+      { title: "T", description: "", link: "https://x.test" },
+      [{ subject: "S", slug: "s", previewText: "", sentAt: null, url: "https://x.test/p/s", html: "<p>Hi</p>", markdown: "**Hi**" }],
+    );
+    expect(rss).toContain("<p>Hi</p>");
+    expect(rss).not.toContain("**Hi**");
+  });
+});
