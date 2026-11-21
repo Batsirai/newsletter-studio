@@ -9,13 +9,13 @@ Built with [oss.new](https://oss.new) for [EveryApp](https://github.com/every-ap
 ## Features
 
 - Create newsletters with a public URL, sender details, postal address, confirmed opt-in and a welcome email.
-- Keep contacts with statuses, tags and custom fields; search, filter, edit in bulk and export CSV.
+- Keep contacts with statuses, tags and custom fields; search, filter, edit in bulk, import and export CSV.
 - Group contacts into segments by tags, source and signup date.
 - Write campaigns in Markdown with a live preview, review them, send a test, then send now or schedule, with pause and resume.
 - Publish issues on a public site with signup, embeddable form, confirmation and one-click unsubscribe.
 - See opens, clicks, unsubscribes and page views per campaign, and subscriber growth per newsletter.
 
-Left out: accounts and sign-in, which your Gateway handles; automations; importers; custom domains; themes; an API; billing.
+Left out: accounts and sign-in, which your Gateway handles; automations; custom domains; themes; an API; billing.
 
 ## Setup
 

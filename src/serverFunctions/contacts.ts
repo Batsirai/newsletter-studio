@@ -18,6 +18,11 @@ export const addContact = createServerFn({ method: "POST" })
   .validator((d: unknown) => q.addContactInput.parse(d))
   .handler(({ data, context }) => q.addContact(context.user.id, data));
 
+export const importContacts = createServerFn({ method: "POST" })
+  .middleware([userMiddleware])
+  .validator((d: unknown) => q.importInput.parse(d))
+  .handler(({ data, context }) => q.importContacts(context.user.id, data));
+
 export const updateContact = createServerFn({ method: "POST" })
   .middleware([userMiddleware])
   .validator((d: unknown) => q.updateContactInput.parse(d))
