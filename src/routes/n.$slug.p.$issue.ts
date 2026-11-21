@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createElement as h } from "react";
+import { canonicalIssue } from "@/lib/canonical";
 import { mergeTags, renderMarkdown } from "@/lib/markdown";
 import { ISSUE_PROSE } from "@/lib/prose";
 import { publicNewsletter, siteIssue } from "@/server/public";
 import { notFoundPage, publicPage, SignupForm } from "@/server/publicPage";
 
-// One web issue, at a slug made from its subject. Each view is counted.
+// One web issue, at a slug made from its subject. Each view is counted. A
+// newsletter whose issues live on its own site redirects there.
 export const Route = createFileRoute("/n/$slug/p/$issue")({
   server: {
     handlers: {
@@ -14,6 +16,8 @@ export const Route = createFileRoute("/n/$slug/p/$issue")({
         if (!newsletter) return notFoundPage();
         const issue = await siteIssue(newsletter.id, params.issue);
         if (!issue) return notFoundPage();
+        const canonical = canonicalIssue(newsletter.slug, params.issue);
+        if (canonical) return Response.redirect(canonical, 301);
         return publicPage(
           `${issue.subject} · ${newsletter.name}`,
           h("div", { className: "space-y-10" }, [
