@@ -1,0 +1,3 @@
+/** The issue body's look on the web page and in the editor's preview. */
+export const ISSUE_PROSE =
+  "space-y-4 break-words text-base leading-relaxed [&_a]:text-primary [&_a]:underline [&_a[data-button]]:inline-block [&_a[data-button]]:rounded-md [&_a[data-button]]:bg-primary [&_a[data-button]]:px-4 [&_a[data-button]]:py-2 [&_a[data-button]]:font-medium [&_a[data-button]]:text-primary-foreground [&_a[data-button]]:no-underline [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_hr]:border-border [&_img]:max-w-full [&_img]:rounded-md [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6";
