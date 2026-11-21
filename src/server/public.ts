@@ -1,7 +1,9 @@
+import { env } from "cloudflare:workers";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { campaigns, contactEvents, contactTags, contacts, deliveries, linkClicks, newsletters } from "@/db/schema";
+import { verifyClick } from "@/lib/footer";
 import { linksIn } from "@/lib/markdown";
 import { eventRow, MAX_TAGS, newToken, normalizeTags, STATUS_LABEL, type Status } from "./contacts";
 import { deliver, renderConfirmation, renderWelcome } from "./mail";
@@ -196,12 +198,17 @@ export async function trackOpen(id: string) {
   }
 }
 
-/** The URL to redirect to, only when the campaign contains it. */
-export async function trackClick(id: string, url: string): Promise<string | null> {
+/**
+ * The URL to redirect to, only when the campaign contains it, or when it is a
+ * personal-block link Studio signed for this delivery (`sig`, keyed by the footer secret).
+ */
+export async function trackClick(id: string, url: string, sig = ""): Promise<string | null> {
   const delivery = await deliveryFor(id);
   if (!delivery) return null;
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, delivery.campaignId));
-  if (!campaign || !linksIn(campaign.body).includes(url) || !/^(https?:|mailto:)/i.test(url)) return null;
+  if (!campaign || !/^(https?:|mailto:)/i.test(url)) return null;
+  const allowed = linksIn(campaign.body).includes(url) || (/^https?:/i.test(url) && (await verifyClick(env.FOOTER_API_SECRET ?? "", id, url, sig)));
+  if (!allowed) return null;
   const now = new Date().toISOString();
   const nid = await newsletterOf(delivery.contactId);
   await db.batch([

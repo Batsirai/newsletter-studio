@@ -21,7 +21,7 @@ Left out: accounts and sign-in, which your Gateway handles; automations; custom 
 
 - Install: `pnpm install`. Test: `pnpm test` for unit tests; `checks/` holds the release checks.
 - Run locally: `pnpm dev`. Deploy: `pnpm run deploy`.
-- No secrets or settings. Mail goes through the Gateway's email capability, so the Gateway needs a sender (`everyapp configure`). To send as a newsletter's from name, allow a sender for the app with `everyapp email set --sender '*@your-domain'`; each newsletter then sends as `<slug>@your-domain`.
+- One optional feature, the personal footer: set the secrets `FOOTER_API_URL` (the AlreadyLoved app's footer route) and `FOOTER_API_SECRET` (its shared secret) and each issue ends with the reader's own next step. Without them, issues send with no personal block. Mail goes through the Gateway's email capability, so the Gateway needs a sender (`everyapp configure`). To send as a newsletter's from name, allow a sender for the app with `everyapp email set --sender '*@your-domain'`; each newsletter then sends as `<slug>@your-domain`.
 
 ## Limitations
 
