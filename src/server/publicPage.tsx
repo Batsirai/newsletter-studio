@@ -3,13 +3,14 @@ import { renderToString } from "react-dom/server";
 import appCss from "@/client/styles/app.css?url";
 import { buttonVariants } from "@/client/components/ui/button";
 
-/** A public page for readers: the app's stylesheet, no scripts. */
+/** A public page for readers: the app's stylesheet, no scripts, kept out of search results. */
 export function publicPage(title: string, body: ReactNode, status = 200): Response {
   const html = renderToString(
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="robots" content="noindex" />
         <title>{title}</title>
         <link rel="stylesheet" href={appCss} />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
@@ -25,6 +26,7 @@ export function publicPage(title: string, body: ReactNode, status = 200): Respon
       "content-type": "text/html; charset=utf-8",
       "content-security-policy": "default-src 'none'; style-src 'self'; img-src https: data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       "referrer-policy": "no-referrer",
+      "x-robots-tag": "noindex",
     },
   });
 }

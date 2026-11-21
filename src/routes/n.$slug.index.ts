@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createElement as h } from "react";
+import { canonicalHome } from "@/lib/canonical";
 import { publicNewsletter, siteIssues } from "@/server/public";
 import { notFoundPage, publicPage, SignupForm } from "@/server/publicPage";
 
@@ -10,6 +11,8 @@ export const Route = createFileRoute("/n/$slug/")({
       GET: async ({ params }: { params: { slug: string } }) => {
         const newsletter = await publicNewsletter(params.slug);
         if (!newsletter) return notFoundPage();
+        const canonical = canonicalHome(newsletter.slug);
+        if (canonical) return Response.redirect(canonical, 301);
         const issues = await siteIssues(newsletter.id);
         return publicPage(
           newsletter.name,
