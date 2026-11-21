@@ -19,6 +19,9 @@ const footerSchema = z.object({
   buttonLabel: z.string(),
   buttonUrl: z.string(),
   bookshelfUrl: z.string(),
+  // The "New from us" line: the newest letter or article. An older app sends none;
+  // a malformed one is dropped so the reader still gets the block.
+  news: z.object({ title: z.string(), url: z.string() }).nullish().catch(undefined),
 });
 export type Footer = z.infer<typeof footerSchema>;
 
@@ -88,6 +91,40 @@ export function renderFooterBlock(footer: Footer, track: (url: string) => string
   ];
   return `<table role="presentation" data-personal-block width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${b.card};border:1px solid ${b.border};border-radius:12px">
 <tr><td align="center" style="padding:28px 28px 30px;font-family:${b.body};color:${b.ink};text-align:center">${rows.join("")}</td></tr></table>`;
+}
+
+export type FooterNews = NonNullable<Footer["news"]>;
+
+/** One quiet line under the block: "New from us:" and the title as the link. Empty when the link isn't http(s). */
+export function renderNewsLine(news: FooterNews, track: (url: string) => string = (url) => url): string {
+  const url = httpUrl(news.url);
+  const title = news.title.trim();
+  if (!url || !title) return "";
+  const b = BRAND;
+  return `<p data-news-line style="font-family:${b.body};font-size:14px;line-height:1.6;color:${b.muted};text-align:center;margin:16px 0 0">New from us: <a href="${escapeHtml(track(url))}" style="color:${b.link};text-decoration:underline">${escapeHtml(title)}</a></p>`;
+}
+
+/** The news line in the text/plain part. */
+export function newsText(news: FooterNews): string {
+  const url = httpUrl(news.url);
+  const title = news.title.trim();
+  return url && title ? `New from us: ${title} ${url}` : "";
+}
+
+function bareLink(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    return `${u.protocol}//${u.host.toLowerCase()}${u.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Same page, ignoring the query string, the fragment and a trailing slash. */
+export function sameLink(a: string, b: string | null | undefined): boolean {
+  if (!b) return false;
+  const x = bareLink(a);
+  return x !== null && x === bareLink(b);
 }
 
 /** The block in the text/plain part: the greeting, the headline and the button's link. */
