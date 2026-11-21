@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { contactEvents, contactTags, contacts, deliveries, segments } from "@/db/schema";
+import { parseContactsCsv } from "@/lib/csv";
 import { requireNewsletter, NotFoundError } from "./newsletters";
 
 export const STATUSES = ["active", "pending", "dormant", "unsubscribed", "bounced", "complained"] as const;
@@ -46,6 +47,13 @@ export const addContactInput = z.object({
   newsletterId: z.string(),
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
   firstName: z.string().trim().max(100).default(""),
+  tags: tagList.default([]),
+});
+
+export const MAX_IMPORT = 5000;
+export const importInput = z.object({
+  newsletterId: z.string(),
+  csv: z.string().max(2_000_000, "That file is too large"),
   tags: tagList.default([]),
 });
 
@@ -204,6 +212,55 @@ export async function addContact(userId: string, input: z.infer<typeof addContac
     ...tags.map((t) => db.insert(contactTags).values({ contactId: id, newsletterId: input.newsletterId, tag: t })),
   ]);
   return { id };
+}
+
+/**
+ * Adds contacts from a CSV file. A contact already on the list is left as it
+ * is, so a person who unsubscribed here is never switched back on. A row the
+ * file marks as not active is stored as unsubscribed.
+ */
+export async function importContacts(userId: string, input: z.infer<typeof importInput>) {
+  await requireNewsletter(userId, input.newsletterId);
+  const parsed = parseContactsCsv(input.csv);
+  if (parsed.rows.length > MAX_IMPORT) throw new Error(`At most ${MAX_IMPORT} contacts in one file`);
+  const tags = normalizeTags(input.tags);
+  const have = new Set(
+    (await db.select({ email: contacts.email }).from(contacts).where(eq(contacts.newsletterId, input.newsletterId))).map((r) => r.email),
+  );
+  const fresh = parsed.rows.filter((r) => !have.has(r.email));
+  const now = new Date().toISOString();
+  // D1 takes a limited batch; 20 contacts are at most 20 * (2 + tags) statements.
+  for (let i = 0; i < fresh.length; i += 20) {
+    const statements = fresh.slice(i, i + 20).flatMap((r) => {
+      const id = crypto.randomUUID();
+      return [
+        db
+          .insert(contacts)
+          .values({
+            id,
+            newsletterId: input.newsletterId,
+            email: r.email,
+            firstName: r.firstName,
+            status: r.active ? "active" : "unsubscribed",
+            source: "manual",
+            token: newToken(),
+            confirmedAt: r.active ? now : null,
+          })
+          .onConflictDoNothing(),
+        db.insert(contactEvents).values(eventRow(id, input.newsletterId, "signup", r.active ? "Imported" : "Imported as unsubscribed")),
+        ...(r.active ? tags.map((t) => db.insert(contactTags).values({ contactId: id, newsletterId: input.newsletterId, tag: t })) : []),
+      ];
+    });
+    const [first, ...rest] = statements;
+    if (first) await db.batch([first, ...rest]);
+  }
+  return {
+    added: fresh.filter((r) => r.active).length,
+    unsubscribed: fresh.filter((r) => !r.active).length,
+    existing: parsed.rows.length - fresh.length,
+    invalid: parsed.invalid,
+    repeated: parsed.repeated,
+  };
 }
 
 async function requireContact(userId: string, newsletterId: string, contactId: string) {

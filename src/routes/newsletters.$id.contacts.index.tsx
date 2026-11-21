@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { Download, Plus } from "lucide-react";
+import { Download, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { EmptyState } from "@/client/components/EmptyState";
@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/client/components/ui/input";
 import { NativeSelect } from "@/client/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/client/components/ui/table";
-import { addContact, bulkContacts, listContacts } from "@/serverFunctions/contacts";
+import { addContact, bulkContacts, importContacts, listContacts } from "@/serverFunctions/contacts";
 
 const STATUSES = ["active", "pending", "dormant", "unsubscribed", "bounced", "complained"] as const;
 const SOURCES = ["website", "embed", "manual"] as const;
@@ -47,6 +47,7 @@ function Contacts() {
   const navigate = useNavigate({ from: Route.fullPath });
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulk, setBulk] = useState<Bulk>(null);
   const [q, setQ] = useState(filters.q ?? "");
@@ -76,6 +77,9 @@ function Contacts() {
             <a href={`/export/contacts/${id}${exportQuery ? `?${exportQuery}` : ""}`} className={buttonVariants({ variant: "outline" })}>
               <Download aria-hidden /> Export CSV
             </a>
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              <Upload aria-hidden /> Import CSV
+            </Button>
             <Button onClick={() => setAdding(true)}>
               <Plus aria-hidden /> Add contact
             </Button>
@@ -204,6 +208,7 @@ function Contacts() {
         </div>
       ) : null}
 
+      {importing ? <ImportDialog newsletterId={id} onClose={() => setImporting(false)} onDone={refresh} /> : null}
       {adding ? <AddDialog newsletterId={id} onClose={() => setAdding(false)} onDone={refresh} /> : null}
       {bulk ? <BulkDialog kind={bulk} newsletterId={id} ids={selected} onClose={() => setBulk(null)} onDone={refresh} /> : null}
     </NewsletterFrame>
@@ -257,6 +262,66 @@ function AddDialog({ newsletterId, onClose, onDone }: { newsletterId: string; on
             </Button>
             <Button type="submit" pending={pending}>
               Add
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ImportDialog({ newsletterId, onClose, onDone }: { newsletterId: string; onClose: () => void; onDone: () => Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [tags, setTags] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => !o && !pending && onClose()}>
+      <DialogContent>
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!file) return;
+            setPending(true);
+            setError(null);
+            try {
+              const r = await importContacts({ data: { newsletterId, csv: await file.text(), tags: splitTags(tags) } });
+              const skipped = [
+                r.existing ? `${r.existing} already on the list` : "",
+                r.unsubscribed ? `${r.unsubscribed} added as unsubscribed` : "",
+                r.invalid ? `${r.invalid} not valid` : "",
+                r.repeated ? `${r.repeated} repeated` : "",
+              ].filter(Boolean);
+              toast.success(`${r.added} contacts added${skipped.length ? `. ${skipped.join(", ")}.` : ""}`);
+              await onDone();
+              onClose();
+            } catch (err) {
+              setError(errorMessage(err));
+              setPending(false);
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Import contacts</DialogTitle>
+          </DialogHeader>
+          <Field
+            id="i-file"
+            label="CSV file"
+            error={error}
+            hint="Needs an email column. First name and status columns are read when present. People already on the list stay as they are, and anyone the file marks as unsubscribed is never emailed. No confirmation or welcome email is sent."
+          >
+            <Input id="i-file" type="file" accept=".csv,text/csv" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </Field>
+          <Field id="i-tags" label="Tags" hint="Added to every new contact. Separate with commas.">
+            <Input id="i-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" pending={pending} disabled={!file}>
+              Import
             </Button>
           </DialogFooter>
         </form>
