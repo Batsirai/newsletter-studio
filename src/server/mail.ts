@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { GatewayRefusalError, sendEmail } from "@every-app/sdk/server";
+import { BRAND, emailLayout } from "@/lib/emailLayout";
 import { escapeHtml, mergeTags, renderMarkdown, toPlainText } from "@/lib/markdown";
 import type { Newsletter } from "./newsletters";
 
@@ -50,12 +51,8 @@ export async function deliver(
   }
 }
 
-function layout(inner: string, footer: string, preview = ""): string {
-  return `<!doctype html><html><body style="margin:0;padding:24px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
-${preview ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preview)}</div>` : ""}
-<div style="max-width:600px;margin:0 auto">${inner}
-<hr style="margin:32px 0 16px;border:0;border-top:1px solid currentColor;opacity:.2">
-<div style="font-size:12px;line-height:1.5;opacity:.7">${footer}</div></div></body></html>`;
+function layout(title: string, inner: string, footer: string, preview = ""): string {
+  return emailLayout({ title, inner, footer, preview });
 }
 
 export interface IssueParts {
@@ -85,18 +82,18 @@ export function renderIssue(p: IssueParts) {
   const subject = mergeTags(p.campaign.subject, { first_name: p.contact.firstName });
   return {
     subject,
-    html: layout(renderMarkdown(source, { email: true, link: track }), footer, mergeTags(p.campaign.previewText, { first_name: p.contact.firstName })),
+    html: layout(p.newsletter.name, renderMarkdown(source, { email: true, link: track }), footer, mergeTags(p.campaign.previewText, { first_name: p.contact.firstName })),
     text: `${toPlainText(source)}\n\n--\n${p.newsletter.postalAddress}\nUnsubscribe: ${unsubscribe}\n`,
     headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
   };
 }
 
 /** A test copy to the sender: no tracking, merge tags at their fallbacks. */
-export function renderTest(newsletter: Pick<Newsletter, "postalAddress">, campaign: { subject: string; previewText: string; body: string }) {
+export function renderTest(newsletter: Pick<Newsletter, "name" | "postalAddress">, campaign: { subject: string; previewText: string; body: string }) {
   const source = mergeTags(campaign.body, {});
   return {
     subject: `[Test] ${mergeTags(campaign.subject, {})}`,
-    html: layout(renderMarkdown(source, { email: true }), escapeHtml(newsletter.postalAddress), mergeTags(campaign.previewText, {})),
+    html: layout(newsletter.name, renderMarkdown(source, { email: true }), escapeHtml(newsletter.postalAddress), mergeTags(campaign.previewText, {})),
     text: toPlainText(source),
   };
 }
@@ -106,8 +103,9 @@ export function renderConfirmation(newsletter: Pick<Newsletter, "name" | "postal
   return {
     subject: `Confirm your subscription to ${newsletter.name}`,
     html: layout(
+      newsletter.name,
       `<p style="font-size:16px;line-height:1.6">Confirm that you want to receive ${name}.</p>
-<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;border:2px solid currentColor;border-radius:6px;font-weight:600;text-decoration:none;color:inherit">Confirm subscription</a></p>
+<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 22px;background-color:${BRAND.accent};border-radius:999px;font-weight:600;text-decoration:none;color:#ffffff">Confirm subscription</a></p>
 <p style="font-size:14px;opacity:.7">If you didn't sign up, ignore this email.</p>`,
       escapeHtml(newsletter.postalAddress),
     ),
@@ -125,6 +123,7 @@ export function renderWelcome(
   return {
     subject: mergeTags(newsletter.welcomeSubject || `Welcome to ${newsletter.name}`, { first_name: contact.firstName }),
     html: layout(
+      newsletter.name,
       renderMarkdown(source, { email: true }),
       `${escapeHtml(newsletter.postalAddress)}<br><a href="${escapeHtml(unsubscribe)}" style="color:inherit">Unsubscribe</a>`,
     ),
