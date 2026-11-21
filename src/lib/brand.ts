@@ -4,11 +4,11 @@
  * site's fonts, so each stack ends in a font every client has.
  */
 export const BRAND = {
-  /** The 600x200 banner ("already loved with Batsirai & Aimee"), served from public/assets. */
+  /** The 1200x400 header (shown at 600x200) ("already loved with Batsirai & Aimee"), served from public/assets. */
   headerUrl: "https://newsletter-studio.apps.alreadylovedkids.com/assets/email-header.png",
   headerAlt: "AlreadyLoved with Batsirai & Aimee",
   siteUrl: "https://alreadylovedkids.com",
-  page: "#f8f3ea",
+  page: "#fffaf5",
   card: "#ffffff",
   border: "#f1e6da",
   ink: "#1a1a1a",
