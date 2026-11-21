@@ -34,7 +34,7 @@ const EMAIL_STYLE: Record<string, string> = {
   p: `font-size:16px;line-height:1.65;color:${BRAND.ink};margin:0 0 16px`,
   li: `font-size:16px;line-height:1.65;color:${BRAND.ink};margin:0 0 6px`,
   a: `color:${BRAND.link};text-decoration:underline`,
-  blockquote: `margin:0 0 16px;padding:12px 16px;border-left:3px solid ${BRAND.accent};background-color:${BRAND.soft};border-radius:4px;color:${BRAND.ink}`,
+  blockquote: `margin:0 0 16px;padding:14px 18px;background-color:${BRAND.soft};border-radius:8px;font-style:italic;color:${BRAND.ink}`,
   img: "max-width:100%;height:auto;display:block;margin:0 0 16px;border-radius:8px",
   button: `display:inline-block;padding:12px 22px;background-color:${BRAND.accent};border-radius:999px;font-weight:600;text-decoration:none;color:#ffffff`,
 };
