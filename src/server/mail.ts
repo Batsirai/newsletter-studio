@@ -1,24 +1,26 @@
 import { env } from "cloudflare:workers";
-import { GatewayRefusalError, sendEmail } from "@every-app/sdk/server";
+import { GatewayRefusalError, integrationStatus, sendEmail } from "@every-app/sdk/server";
 import { BRAND, emailLayout } from "@/lib/emailLayout";
 import { escapeHtml, mergeTags, renderMarkdown, toPlainText } from "@/lib/markdown";
+import { senderFor } from "@/lib/sender";
 import type { Newsletter } from "./newsletters";
 
 type Message = Parameters<typeof sendEmail>[0]["message"];
 
 /**
- * The newsletter's own sender when the install allows one: one exact
- * address, or `<slug>@domain` under a `*@domain` pattern. Otherwise the
- * Gateway's sender.
+ * The patterns the Gateway accepts as From for this app. In production they
+ * come from the Gateway (the deployed Worker holds no copy); a failed lookup
+ * falls back to the Gateway's sender and is retried on the next send.
  */
-function fromFor(newsletter: Pick<Newsletter, "fromName" | "slug">): Message["from"] | undefined {
-  const patterns = String((env as unknown as Record<string, unknown>).EVERYAPP_EMAIL_SENDERS ?? "")
-    .split(/[\s,]+/)
-    .filter(Boolean);
-  const first = patterns[0];
-  if (!first || !newsletter.fromName) return undefined;
-  const address = first.startsWith("*@") ? `${newsletter.slug}@${first.slice(2)}` : first;
-  return { address, name: newsletter.fromName };
+let senders: Promise<string[]> | null = null;
+function allowedSenders(): Promise<string[]> {
+  senders ??= integrationStatus({ env, provider: "email", for: { background: true } })
+    .then((status) => ("senders" in status && Array.isArray(status.senders) ? status.senders : []))
+    .catch(() => {
+      senders = null;
+      return [];
+    });
+  return senders;
 }
 
 export type SendResult = { ok: true } | { ok: false; code: string; message: string; retryLater: boolean };
@@ -31,7 +33,7 @@ export async function deliver(
   message: Omit<Message, "from" | "replyTo">,
   background: boolean,
 ): Promise<SendResult> {
-  const from = fromFor(newsletter);
+  const from = senderFor(await allowedSenders(), newsletter);
   try {
     await sendEmail({
       env,
