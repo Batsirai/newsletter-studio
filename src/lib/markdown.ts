@@ -2,6 +2,8 @@
 // rules, bold, italic, links, images and buttons ([[Label]](url)). Raw HTML is
 // escaped, never passed through.
 
+import { BRAND } from "./brand";
+
 export function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -26,14 +28,15 @@ function safeUrl(url: string): string | null {
 }
 
 const EMAIL_STYLE: Record<string, string> = {
-  h1: "font-size:26px;line-height:1.25;margin:24px 0 12px",
-  h2: "font-size:21px;line-height:1.3;margin:22px 0 10px",
-  h3: "font-size:17px;line-height:1.35;margin:20px 0 8px",
-  p: "font-size:16px;line-height:1.6;margin:0 0 16px",
-  li: "font-size:16px;line-height:1.6;margin:0 0 6px",
-  blockquote: "margin:0 0 16px;padding-left:14px;border-left:3px solid currentColor;opacity:.8",
-  img: "max-width:100%;height:auto;display:block;margin:0 0 16px",
-  button: "display:inline-block;padding:10px 18px;border:2px solid currentColor;border-radius:6px;font-weight:600;text-decoration:none;color:inherit",
+  h1: `font-family:${BRAND.heading};font-size:28px;line-height:1.25;font-weight:600;color:${BRAND.ink};margin:8px 0 14px`,
+  h2: `font-family:${BRAND.heading};font-size:22px;line-height:1.3;font-weight:600;color:${BRAND.ink};margin:24px 0 10px`,
+  h3: `font-family:${BRAND.heading};font-size:18px;line-height:1.35;font-weight:600;color:${BRAND.ink};margin:20px 0 8px`,
+  p: `font-size:16px;line-height:1.65;color:${BRAND.ink};margin:0 0 16px`,
+  li: `font-size:16px;line-height:1.65;color:${BRAND.ink};margin:0 0 6px`,
+  a: `color:${BRAND.link};text-decoration:underline`,
+  blockquote: `margin:0 0 16px;padding:12px 16px;border-left:3px solid ${BRAND.accent};background-color:${BRAND.soft};border-radius:4px;color:${BRAND.ink}`,
+  img: "max-width:100%;height:auto;display:block;margin:0 0 16px;border-radius:8px",
+  button: `display:inline-block;padding:12px 22px;background-color:${BRAND.accent};border-radius:999px;font-weight:600;text-decoration:none;color:#ffffff`,
 };
 
 function style(tag: string, options: RenderOptions): string {
@@ -54,7 +57,7 @@ function inline(text: string, options: RenderOptions): string {
     const href = safeUrl(url);
     if (!href) return keep(escapeHtml(label));
     const target = options.link ? options.link(href) : href;
-    return keep(`<a href="${escapeHtml(target)}">${formatText(label)}</a>`);
+    return keep(`<a href="${escapeHtml(target)}"${style("a", options)}>${formatText(label)}</a>`);
   });
   out = formatText(out);
   return out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => tokens[Number(i)]!);
