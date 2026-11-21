@@ -53,8 +53,8 @@ export async function deliver(
   }
 }
 
-function layout(title: string, inner: string, footer: string, preview = ""): string {
-  return emailLayout({ title, inner, footer, preview });
+function layout(title: string, inner: string, footer: string, preview = "", signoff = false): string {
+  return emailLayout({ title, inner, footer, preview, signoff });
 }
 
 export interface IssueParts {
@@ -84,7 +84,7 @@ export function renderIssue(p: IssueParts) {
   const subject = mergeTags(p.campaign.subject, { first_name: p.contact.firstName });
   return {
     subject,
-    html: layout(p.newsletter.name, renderMarkdown(source, { email: true, link: track }), footer, mergeTags(p.campaign.previewText, { first_name: p.contact.firstName })),
+    html: layout(p.newsletter.name, renderMarkdown(source, { email: true, link: track }), footer, mergeTags(p.campaign.previewText, { first_name: p.contact.firstName }), true),
     text: `${toPlainText(source)}\n\n--\n${p.newsletter.postalAddress}\nUnsubscribe: ${unsubscribe}\n`,
     headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
   };
@@ -95,7 +95,7 @@ export function renderTest(newsletter: Pick<Newsletter, "name" | "postalAddress"
   const source = mergeTags(campaign.body, {});
   return {
     subject: `[Test] ${mergeTags(campaign.subject, {})}`,
-    html: layout(newsletter.name, renderMarkdown(source, { email: true }), escapeHtml(newsletter.postalAddress), mergeTags(campaign.previewText, {})),
+    html: layout(newsletter.name, renderMarkdown(source, { email: true }), escapeHtml(newsletter.postalAddress), mergeTags(campaign.previewText, {}), true),
     text: toPlainText(source),
   };
 }
