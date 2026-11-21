@@ -29,6 +29,13 @@ describe("emailLayout", () => {
     expect(html).toMatch(/<table[^>]*role="presentation"/);
   });
 
+  it("puts a personal block between the card and the footer, and nothing when there is none", () => {
+    const withBlock = emailLayout({ title: "T", inner: "<p>Body</p>", footer: "1 Road", block: "<table data-personal-block></table>" });
+    expect(withBlock.indexOf("<p>Body</p>")).toBeLessThan(withBlock.indexOf("data-personal-block"));
+    expect(withBlock.indexOf("data-personal-block")).toBeLessThan(withBlock.indexOf("1 Road"));
+    expect(emailLayout({ title: "T", inner: "<p>Body</p>", footer: "1 Road", block: "" })).toBe(emailLayout({ title: "T", inner: "<p>Body</p>", footer: "1 Road" }));
+  });
+
   it("leaves out the preview block when there is none", () => {
     expect(emailLayout({ title: "T", inner: "", footer: "" })).not.toContain("display:none");
   });
