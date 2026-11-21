@@ -40,6 +40,15 @@ export async function siteIssues(newsletterId: string) {
     .orderBy(desc(campaigns.sentAt));
 }
 
+/** Every web issue with its body, newest first, for the JSON and RSS feeds. */
+export async function feedIssues(newsletterId: string) {
+  return db
+    .select({ subject: campaigns.subject, slug: campaigns.slug, previewText: campaigns.previewText, sentAt: campaigns.sentAt, body: campaigns.body })
+    .from(campaigns)
+    .where(published(newsletterId))
+    .orderBy(desc(campaigns.sentAt));
+}
+
 export async function siteIssue(newsletterId: string, slug: string) {
   const [issue] = await db
     .select()

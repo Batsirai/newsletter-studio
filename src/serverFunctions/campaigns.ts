@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import * as q from "@/server/campaigns";
+import * as posts from "@/server/posts";
 import { listSegments } from "@/server/segments";
 import { getReport } from "@/server/stats";
 import { orNull, requestOrigin } from "@/server/request";
@@ -78,3 +79,8 @@ export const setIssueOnWebsite = createServerFn({ method: "POST" })
   .middleware([userMiddleware])
   .validator((d: unknown) => q.campaignRef.extend({ onWebsite: z.boolean() }).parse(d))
   .handler(({ data, context }) => q.setOnWebsite(context.user.id, data));
+
+export const importPosts = createServerFn({ method: "POST" })
+  .middleware([userMiddleware])
+  .validator((d: unknown) => posts.importPostsInput.parse(d))
+  .handler(({ data, context }) => posts.importPosts(context.user.id, data));

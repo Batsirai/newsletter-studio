@@ -1,14 +1,17 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/client/components/EmptyState";
+import { Field } from "@/client/components/Field";
 import { errorMessage, NewsletterFrame } from "@/client/components/NewsletterFrame";
 import { PageHeader } from "@/client/components/PageHeader";
 import { CampaignStatus, formatDate } from "@/client/components/StatusBadge";
 import { Button } from "@/client/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/client/components/ui/dialog";
+import { Input } from "@/client/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/client/components/ui/table";
-import { createCampaign, listCampaigns } from "@/serverFunctions/campaigns";
+import { createCampaign, importPosts, listCampaigns } from "@/serverFunctions/campaigns";
 
 export const Route = createFileRoute("/newsletters/$id/campaigns/")({
   loader: ({ params }) => listCampaigns({ data: { newsletterId: params.id } }),
@@ -19,7 +22,9 @@ function Campaigns() {
   const { id } = Route.useParams();
   const campaigns = Route.useLoaderData();
   const navigate = useNavigate();
+  const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [importing, setImporting] = useState(false);
   if (!campaigns) return <NewsletterFrame id={id} found={false}>{null}</NewsletterFrame>;
   const newButton = (
     <Button
@@ -40,7 +45,17 @@ function Campaigns() {
   );
   return (
     <NewsletterFrame id={id} found>
-      <PageHeader title="Campaigns" actions={campaigns.length ? newButton : null} />
+      <PageHeader
+        title="Campaigns"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              <Upload aria-hidden /> Import posts
+            </Button>
+            {campaigns.length ? newButton : null}
+          </>
+        }
+      />
       {campaigns.length ? (
         <Table>
           <TableHeader>
@@ -73,6 +88,62 @@ function Campaigns() {
       ) : (
         <EmptyState title="No campaigns yet" action={newButton} />
       )}
+      {importing ? <ImportPostsDialog newsletterId={id} onClose={() => setImporting(false)} onDone={() => router.invalidate()} /> : null}
     </NewsletterFrame>
+  );
+}
+
+function ImportPostsDialog({ newsletterId, onClose, onDone }: { newsletterId: string; onClose: () => void; onDone: () => Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => !o && !pending && onClose()}>
+      <DialogContent>
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!file) return;
+            setPending(true);
+            setError(null);
+            try {
+              const r = await importPosts({ data: { newsletterId, json: await file.text() } });
+              const skipped = [
+                r.existing ? `${r.existing} already here` : "",
+                r.invalid ? `${r.invalid} not valid` : "",
+                r.repeated ? `${r.repeated} repeated` : "",
+              ].filter(Boolean);
+              toast.success(`${r.added} posts added${skipped.length ? `. ${skipped.join(", ")}.` : ""}`);
+              await onDone();
+              onClose();
+            } catch (err) {
+              setError(errorMessage(err));
+              setPending(false);
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Import posts</DialogTitle>
+          </DialogHeader>
+          <Field
+            id="p-file"
+            label="JSON file"
+            error={error}
+            hint="A list of posts, each with subject, body (Markdown), sentAt, and optional slug and previewText. They are added as sent web issues and show on the newsletter's site. Nothing is emailed."
+          >
+            <Input id="p-file" type="file" accept=".json,application/json" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" pending={pending} disabled={!file}>
+              Import
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
