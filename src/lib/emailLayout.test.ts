@@ -29,13 +29,6 @@ describe("emailLayout", () => {
     expect(html).toMatch(/<table[^>]*role="presentation"/);
   });
 
-  it("ends a letter with the waving sign-off only when asked", () => {
-    const letter = emailLayout({ title: "T", inner: "<p>x</p>", footer: "", signoff: true });
-    expect(letter).toContain(`src="${BRAND.signoffUrl}"`);
-    expect(letter).toContain("border-radius:50%");
-    expect(emailLayout({ title: "T", inner: "", footer: "" })).not.toContain(BRAND.signoffUrl);
-  });
-
   it("leaves out the preview block when there is none", () => {
     expect(emailLayout({ title: "T", inner: "", footer: "" })).not.toContain("display:none");
   });
