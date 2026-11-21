@@ -17,6 +17,7 @@ export async function newsletterFeed(slug: string, origin: string) {
       sentAt: r.sentAt,
       url: `${link}/p/${r.slug}`,
       html: renderMarkdown(mergeTags(r.body, {})),
+      markdown: mergeTags(r.body, {}),
     }));
   return {
     title: newsletter.name,

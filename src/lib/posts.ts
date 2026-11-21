@@ -70,6 +70,8 @@ export interface FeedIssue {
   sentAt: string | null;
   url: string;
   html: string;
+  /** The issue's Markdown source, so a site can render it in its own template. */
+  markdown?: string;
 }
 
 /** An RSS 2.0 document for a newsletter's web issues, newest first. */
