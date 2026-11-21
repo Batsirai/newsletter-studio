@@ -22,6 +22,8 @@ export default defineEveryApp({
   public: [
     { path: "/n/*", methods: ["GET"] },
     { path: "/n/*/p/*", methods: ["GET"] },
+    { path: "/n/*/feed", methods: ["GET"] },
+    { path: "/n/*/rss", methods: ["GET"] },
     { path: "/n/*/subscribe", methods: ["POST"] },
     { path: "/n/*/confirm/*", methods: ["GET"] },
     { path: "/n/*/unsubscribe/*", methods: ["GET", "POST"] },

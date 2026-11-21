@@ -14,6 +14,8 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as ExportContactsNewsletterIdRouteImport } from './routes/export.contacts.$newsletterId'
 import { Route as NSlugIndexRouteImport } from './routes/n.$slug.index'
+import { Route as NSlugFeedRouteImport } from './routes/n.$slug.feed'
+import { Route as NSlugRssRouteImport } from './routes/n.$slug.rss'
 import { Route as NSlugSubscribeRouteImport } from './routes/n.$slug.subscribe'
 import { Route as NewslettersIdIndexRouteImport } from './routes/newsletters.$id.index'
 import { Route as NewslettersIdSettingsRouteImport } from './routes/newsletters.$id.settings'
@@ -55,6 +57,16 @@ const ExportContactsNewsletterIdRoute =
 const NSlugIndexRoute = NSlugIndexRouteImport.update({
   id: '/n/$slug/',
   path: '/n/$slug/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NSlugFeedRoute = NSlugFeedRouteImport.update({
+  id: '/n/$slug/feed',
+  path: '/n/$slug/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NSlugRssRoute = NSlugRssRouteImport.update({
+  id: '/n/$slug/rss',
+  path: '/n/$slug/rss',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NSlugSubscribeRoute = NSlugSubscribeRouteImport.update({
@@ -150,6 +162,8 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
   '/export/contacts/$newsletterId': typeof ExportContactsNewsletterIdRoute
+  '/n/$slug/feed': typeof NSlugFeedRoute
+  '/n/$slug/rss': typeof NSlugRssRoute
   '/n/$slug/subscribe': typeof NSlugSubscribeRoute
   '/newsletters/$id/settings': typeof NewslettersIdSettingsRoute
   '/t/c/$id': typeof TCIdRoute
@@ -173,6 +187,8 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
   '/export/contacts/$newsletterId': typeof ExportContactsNewsletterIdRoute
+  '/n/$slug/feed': typeof NSlugFeedRoute
+  '/n/$slug/rss': typeof NSlugRssRoute
   '/n/$slug/subscribe': typeof NSlugSubscribeRoute
   '/newsletters/$id/settings': typeof NewslettersIdSettingsRoute
   '/t/c/$id': typeof TCIdRoute
@@ -197,6 +213,8 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
   '/export/contacts/$newsletterId': typeof ExportContactsNewsletterIdRoute
+  '/n/$slug/feed': typeof NSlugFeedRoute
+  '/n/$slug/rss': typeof NSlugRssRoute
   '/n/$slug/subscribe': typeof NSlugSubscribeRoute
   '/newsletters/$id/settings': typeof NewslettersIdSettingsRoute
   '/t/c/$id': typeof TCIdRoute
@@ -222,6 +240,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/health'
     | '/export/contacts/$newsletterId'
+    | '/n/$slug/feed'
+    | '/n/$slug/rss'
     | '/n/$slug/subscribe'
     | '/newsletters/$id/settings'
     | '/t/c/$id'
@@ -245,6 +265,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/health'
     | '/export/contacts/$newsletterId'
+    | '/n/$slug/feed'
+    | '/n/$slug/rss'
     | '/n/$slug/subscribe'
     | '/newsletters/$id/settings'
     | '/t/c/$id'
@@ -268,6 +290,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/health'
     | '/export/contacts/$newsletterId'
+    | '/n/$slug/feed'
+    | '/n/$slug/rss'
     | '/n/$slug/subscribe'
     | '/newsletters/$id/settings'
     | '/t/c/$id'
@@ -292,6 +316,8 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   HealthRoute: typeof HealthRoute
   ExportContactsNewsletterIdRoute: typeof ExportContactsNewsletterIdRoute
+  NSlugFeedRoute: typeof NSlugFeedRoute
+  NSlugRssRoute: typeof NSlugRssRoute
   NSlugSubscribeRoute: typeof NSlugSubscribeRoute
   NewslettersIdSettingsRoute: typeof NewslettersIdSettingsRoute
   TCIdRoute: typeof TCIdRoute
@@ -346,6 +372,20 @@ declare module '@tanstack/react-router' {
       path: '/n/$slug'
       fullPath: '/n/$slug/'
       preLoaderRoute: typeof NSlugIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/n/$slug/feed': {
+      id: '/n/$slug/feed'
+      path: '/n/$slug/feed'
+      fullPath: '/n/$slug/feed'
+      preLoaderRoute: typeof NSlugFeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/n/$slug/rss': {
+      id: '/n/$slug/rss'
+      path: '/n/$slug/rss'
+      fullPath: '/n/$slug/rss'
+      preLoaderRoute: typeof NSlugRssRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/n/$slug/subscribe': {
@@ -468,6 +508,8 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   HealthRoute: HealthRoute,
   ExportContactsNewsletterIdRoute: ExportContactsNewsletterIdRoute,
+  NSlugFeedRoute: NSlugFeedRoute,
+  NSlugRssRoute: NSlugRssRoute,
   NSlugSubscribeRoute: NSlugSubscribeRoute,
   NewslettersIdSettingsRoute: NewslettersIdSettingsRoute,
   TCIdRoute: TCIdRoute,
