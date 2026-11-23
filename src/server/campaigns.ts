@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { campaigns, contactEvents, contacts, deliveries, newsletters } from "@/db/schema";
+import { fetchFooters, FOOTER_STATES, sampleFooter, type Footer } from "@/lib/footer";
 import { slugify } from "@/lib/markdown";
 import { reviewCampaign } from "@/lib/review";
 import { isValidTimeZone, QUARTER_HOURS, zonedTimeToUtc } from "@/lib/schedule";
@@ -23,6 +24,7 @@ export const saveCampaignInput = campaignRef.extend({
   destination: z.enum(DESTINATIONS),
   segmentId: z.string().nullable(),
 });
+export const sendTestInput = campaignRef.extend({ footerState: z.enum(FOOTER_STATES).nullable().default(null) });
 export const scheduleInput = campaignRef.extend({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
   time: z.string().refine((t) => QUARTER_HOURS.includes(t), "Pick a time"),
@@ -126,10 +128,25 @@ export async function deleteCampaign(userId: string, input: z.infer<typeof campa
   return { id: campaign.id };
 }
 
-export async function sendTest(userId: string, email: string, input: z.infer<typeof campaignRef>) {
+/** The app's footer route and its secret; both unset means no personal block at all. */
+function footerConfig() {
+  return { url: env.FOOTER_API_URL, secret: env.FOOTER_API_SECRET };
+}
+
+/** A test copy to the signed-in sender only, as a plain test or with a sample block for one state. */
+export async function sendTest(userId: string, email: string, input: z.infer<typeof sendTestInput>) {
   const { newsletter, campaign } = await requireCampaign(userId, input.newsletterId, input.campaignId);
   if (!campaign.subject.trim() || !campaign.body.trim()) throw new Error("Add a subject and content first");
-  const result = await deliver(newsletter, { to: email, ...renderTest(newsletter, campaign) }, false);
+  let sample: Footer | undefined;
+  if (input.footerState) {
+    // The sender's own first name, when they are on this newsletter's list. Sample data only: the app isn't asked.
+    const [me] = await db
+      .select({ firstName: contacts.firstName })
+      .from(contacts)
+      .where(and(eq(contacts.newsletterId, newsletter.id), eq(contacts.email, email.trim().toLowerCase())));
+    sample = sampleFooter(input.footerState, me?.firstName ?? "");
+  }
+  const result = await deliver(newsletter, { to: email, ...renderTest(newsletter, campaign, sample) }, false);
   if (!result.ok) throw new Error(`The test wasn't sent: ${result.message}`);
   await db.update(campaigns).set({ testSentAt: new Date().toISOString() }).where(eq(campaigns.id, campaign.id));
   return { to: email };
@@ -262,6 +279,17 @@ export async function processCampaign(campaignId: string): Promise<void> {
       ? (canonicalIssue(newsletter.slug, campaign.slug) ?? `${origin}/n/${newsletter.slug}/p/${campaign.slug}`)
       : null;
 
+  // The personal blocks for this batch's active readers, in one request. Null: not configured, no block.
+  const config = footerConfig();
+  const readers = claimed.length
+    ? await db
+        .select({ id: contacts.id, email: contacts.email })
+        .from(contacts)
+        .where(and(eq(contacts.newsletterId, newsletter.id), inArray(contacts.id, claimed.map((d) => d.contactId)), eq(contacts.status, "active")))
+    : [];
+  const footers = await fetchFooters(readers.map((r) => r.email), config);
+  const footerFor = new Map(footers ? readers.map((r, i) => [r.id, footers[i]!] as const) : []);
+
   for (const delivery of claimed) {
     const [current] = await db.select({ status: campaigns.status }).from(campaigns).where(eq(campaigns.id, campaignId));
     const [contact] = await db.select().from(contacts).where(eq(contacts.id, delivery.contactId));
@@ -274,7 +302,9 @@ export async function processCampaign(campaignId: string): Promise<void> {
       await db.update(deliveries).set({ status: "failed", error: "skipped" }).where(eq(deliveries.id, delivery.id));
       continue;
     }
-    const email = renderIssue({ newsletter, campaign, contact, deliveryId: delivery.id, origin, webUrl });
+    const block = footerFor.get(contact.id);
+    const footer = block && config.secret ? { block, key: config.secret } : null;
+    const email = await renderIssue({ newsletter, campaign, contact, deliveryId: delivery.id, origin, webUrl, footer });
     const result = await deliver(newsletter, { to: contact.email, ...email }, true);
     if (result.ok) {
       await db.batch([

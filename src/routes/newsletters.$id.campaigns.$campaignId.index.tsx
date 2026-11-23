@@ -61,6 +61,7 @@ function Editor({ data }: { data: Data }) {
     segmentId: campaign.segmentId,
   });
   const [width, setWidth] = useState<"desktop" | "phone">("desktop");
+  const [testAs, setTestAs] = useState<"" | "start" | "finish" | "share">("");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -271,22 +272,32 @@ function Editor({ data }: { data: Data }) {
                   {recipients} of {data.totalActive} active contacts
                 </p>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                {form.destination !== "web" ? (
+              {form.destination !== "web" ? (
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_auto] sm:items-end">
+                  <Field id="cp-test-as" label="Send test as">
+                    <NativeSelect id="cp-test-as" value={testAs} onChange={(e) => setTestAs(e.target.value as typeof testAs)}>
+                      <option value="">Plain test</option>
+                      <option value="start">No book yet (start)</option>
+                      <option value="finish">Book started (finish)</option>
+                      <option value="share">Ordered (share)</option>
+                    </NativeSelect>
+                  </Field>
                   <Button
                     variant="outline"
                     pending={busy === "test"}
                     onClick={() =>
                       run("test", async () => {
                         await save();
-                        const { to } = await sendTest({ data: ref });
+                        const { to } = await sendTest({ data: { ...ref, footerState: testAs || null } });
                         toast.success(`Test sent to ${to}`);
                       })
                     }
                   >
                     Send test
                   </Button>
-                ) : null}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
                 <Button disabled={blocking.length > 0} onClick={() => setConfirmSend(true)}>
                   Send now
                 </Button>

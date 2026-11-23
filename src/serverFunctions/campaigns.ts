@@ -47,7 +47,7 @@ export const deleteCampaign = createServerFn({ method: "POST" })
 
 export const sendTest = createServerFn({ method: "POST" })
   .middleware([userMiddleware])
-  .validator((d: unknown) => q.campaignRef.parse(d))
+  .validator((d: unknown) => q.sendTestInput.parse(d))
   .handler(({ data, context }) => q.sendTest(context.user.id, context.user.email, data));
 
 export const sendNow = createServerFn({ method: "POST" })
