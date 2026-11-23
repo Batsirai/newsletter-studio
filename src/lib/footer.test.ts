@@ -7,6 +7,7 @@ import {
   sampleFooter,
   signClick,
   verifyClick,
+  withoutSignInToken,
   type Footer,
 } from "./footer";
 
@@ -23,9 +24,12 @@ const finish: Footer = {
 };
 
 describe("renderFooterBlock", () => {
-  it("shows no second greeting, a linked 200px rounded cover, the headline, one button and the bookshelf link, in that order", () => {
+  it("shows no second greeting, a linked 200px rounded cover, the headline and one button, in that order", () => {
     const html = renderFooterBlock(finish);
-    const order = [`src="${finish.coverUrl}"`, "Mia&#39;s book is waiting for you.", "Preview Your Child&#39;s Book", "Open your bookshelf"];
+    const order = [`src="${finish.coverUrl}"`, "Mia&#39;s book is waiting for you.", "Preview Your Child&#39;s Book"];
+    expect(html).not.toContain("Open your bookshelf");
+    // One CTA per email (founder, 2026-11-21): the cover and the button share the one link.
+    expect(new Set([...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1])).size).toBe(1);
     expect(html).not.toContain("Hi Sarah,");
     const at = order.map((s) => html.indexOf(s));
     expect(at.every((i) => i >= 0)).toBe(true);
@@ -44,8 +48,14 @@ describe("renderFooterBlock", () => {
       expect(html).toContain(footer.buttonLabel.replaceAll("'", "&#39;"));
     }
     expect(sampleFooter("start", "").buttonLabel).toBe("Make Your Child's Book");
-    expect(sampleFooter("finish", "").buttonLabel).toBe("Preview Your Child's Book");
-    expect(sampleFooter("share", "").buttonLabel).toBe("Share Your Book");
+    expect(sampleFooter("finish", "").buttonLabel).toBe("Finish Your Child's Book");
+    expect(sampleFooter("share", "").buttonLabel).toBe("Share Your Child's Book");
+  });
+
+  it("leaves out the headline when the app sends none (the button names the child)", () => {
+    const html = renderFooterBlock({ ...finish, headline: "", buttonLabel: "Finish Ana's Book" });
+    expect(html).toContain("Finish Ana&#39;s Book");
+    expect(html).not.toContain("font-size:20px");
   });
 
   it("reads well without a name: no greeting line, no placeholder", () => {
@@ -228,12 +238,23 @@ describe("signed footer clicks", () => {
 });
 
 describe("the Playground line", () => {
-  it("shows under the bookshelf link when the app sends one, and is left out otherwise", () => {
+  it("is not shown, even when the app sends one (one CTA per email)", () => {
     const withPlay = { ...FALLBACK_FOOTER, play: { text: "Free for your kids: coloring pages and games", url: "https://alreadylovedkids.com/play" } };
-    const html = renderFooterBlock(withPlay);
-    expect(html).toContain('href="https://alreadylovedkids.com/play"');
-    expect(html.indexOf("Open your bookshelf")).toBeLessThan(html.indexOf("coloring pages"));
-    expect(renderFooterBlock(FALLBACK_FOOTER)).not.toContain("/play");
-    expect(renderFooterBlock({ ...withPlay, play: { text: "x", url: "javascript:x" } })).not.toContain("javascript:");
+    expect(renderFooterBlock(withPlay)).not.toContain("/play");
+    expect(renderFooterBlock(withPlay)).not.toContain("coloring pages");
+  });
+});
+
+describe("withoutSignInToken", () => {
+  it("hides the token of the app's sign-in link, for click records", () => {
+    expect(withoutSignInToken("https://x.convex.site/api/dashboard?t=abc123&childId=c1&to=home")).toBe(
+      "https://x.convex.site/api/dashboard?t=hidden&childId=c1&to=home",
+    );
+  });
+
+  it("leaves every other link as it is", () => {
+    for (const url of ["https://home.alreadylovedkids.com/home?t=1", "https://x.convex.site/api/dashboard?to=home", "not a url"]) {
+      expect(withoutSignInToken(url)).toBe(url);
+    }
   });
 });

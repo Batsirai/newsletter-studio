@@ -19,10 +19,9 @@ const footerSchema = z.object({
   buttonLabel: z.string(),
   buttonUrl: z.string(),
   bookshelfUrl: z.string(),
-  // The "New from us" line: the newest letter or article. An older app sends none;
-  // a malformed one is dropped so the reader still gets the block.
+  // Not shown any more (one button per email, founder 2026-11-21); an older app may still send it.
   news: z.object({ title: z.string(), url: z.string() }).nullish().catch(undefined),
-  // The free Playground line, sent only for a reader with no book yet.
+  // Not shown while there is one button per email.
   play: z.object({ text: z.string(), url: z.string() }).nullish().catch(undefined),
 });
 export type Footer = z.infer<typeof footerSchema>;
@@ -49,8 +48,8 @@ export const FALLBACK_FOOTER: Footer = {
 
 const SAMPLE_WORDS: Record<FooterState, Pick<Footer, "headline" | "buttonLabel" | "buttonUrl">> = {
   start: { headline: FALLBACK_FOOTER.headline, buttonLabel: FALLBACK_FOOTER.buttonLabel, buttonUrl: FALLBACK_FOOTER.buttonUrl },
-  finish: { headline: "Finish your book", buttonLabel: "Preview Your Child's Book", buttonUrl: `${SITE}/home?${utm("finish")}` },
-  share: { headline: "Share your book", buttonLabel: "Share Your Book", buttonUrl: `${SITE}/home?${utm("share")}` },
+  finish: { headline: "", buttonLabel: "Finish Your Child's Book", buttonUrl: `${SITE}/home?${utm("finish")}` },
+  share: { headline: "", buttonLabel: "Share Your Child's Book", buttonUrl: `${SITE}/home?${utm("share")}` },
 };
 
 /** A sample block for a test send: the sample cover, the sender's own first name if known. */
@@ -72,48 +71,31 @@ function httpUrl(url: string): string | null {
   return /^https?:\/\//i.test(trimmed) ? trimmed : null;
 }
 
-/** The block's HTML, a card of its own under the letter. `track` rewrites each link (click tracking). */
+/**
+ * The block's HTML, a card of its own under the letter: the cover, a headline
+ * when there is one, and one button (founder, 2026-11-21: "one CTA per email").
+ * The button names the child and signs the reader in to their bookshelf; the
+ * app makes that link. `track` rewrites each link (click tracking).
+ */
 export function renderFooterBlock(footer: Footer, track: (url: string) => string = (url) => url): string {
   const b = BRAND;
   const cover = httpUrl(footer.coverUrl);
   const button = httpUrl(footer.buttonUrl);
-  const bookshelf = httpUrl(footer.bookshelfUrl);
-  const play = footer.play ? httpUrl(footer.play.url) : null;
   const href = (url: string) => escapeHtml(track(url));
   const img = cover
     ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(footer.coverAlt)}" width="200" style="display:block;width:200px;max-width:100%;height:auto;margin:0 auto;border:0;border-radius:8px">`
     : "";
   const rows = [
     img ? `<div style="margin:0 0 18px">${button ? `<a href="${href(button)}" style="text-decoration:none">${img}</a>` : img}</div>` : "",
-    `<p style="font-family:${b.heading};font-size:20px;line-height:1.35;font-weight:600;color:${b.ink};margin:0 0 18px">${escapeHtml(footer.headline)}</p>`,
+    footer.headline.trim()
+      ? `<p style="font-family:${b.heading};font-size:20px;line-height:1.35;font-weight:600;color:${b.ink};margin:0 0 18px">${escapeHtml(footer.headline)}</p>`
+      : "",
     button
       ? `<p style="margin:0"><a href="${href(button)}" data-button style="display:inline-block;padding:12px 22px;background-color:${b.accent};border-radius:999px;font-weight:600;text-decoration:none;color:#ffffff">${escapeHtml(footer.buttonLabel)}</a></p>`
-      : "",
-    bookshelf ? `<p style="font-size:14px;line-height:1.6;margin:18px 0 0"><a href="${href(bookshelf)}" style="color:${b.muted};text-decoration:underline">Open your bookshelf</a></p>` : "",
-    play && footer.play?.text.trim()
-      ? `<p style="font-size:14px;line-height:1.6;margin:10px 0 0"><a href="${href(play)}" style="color:${b.link};text-decoration:underline">${escapeHtml(footer.play.text.trim())}</a></p>`
       : "",
   ];
   return `<table role="presentation" data-personal-block width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${b.card};border:1px solid ${b.border};border-radius:12px">
 <tr><td align="center" style="padding:28px 28px 30px;font-family:${b.body};color:${b.ink};text-align:center">${rows.join("")}</td></tr></table>`;
-}
-
-export type FooterNews = NonNullable<Footer["news"]>;
-
-/** One quiet line under the block: "New from us:" and the title as the link. Empty when the link isn't http(s). */
-export function renderNewsLine(news: FooterNews, track: (url: string) => string = (url) => url): string {
-  const url = httpUrl(news.url);
-  const title = news.title.trim();
-  if (!url || !title) return "";
-  const b = BRAND;
-  return `<p data-news-line style="font-family:${b.body};font-size:14px;line-height:1.6;color:${b.muted};text-align:center;margin:16px 0 0">New from us: <a href="${escapeHtml(track(url))}" style="color:${b.link};text-decoration:underline">${escapeHtml(title)}</a></p>`;
-}
-
-/** The news line in the text/plain part. */
-export function newsText(news: FooterNews): string {
-  const url = httpUrl(news.url);
-  const title = news.title.trim();
-  return url && title ? `New from us: ${title} ${url}` : "";
 }
 
 function bareLink(url: string): string | null {
@@ -130,6 +112,21 @@ export function sameLink(a: string, b: string | null | undefined): boolean {
   if (!b) return false;
   const x = bareLink(a);
   return x !== null && x === bareLink(b);
+}
+
+/**
+ * A sign-in link (the app's /api/dashboard?t=...) with its token hidden, for
+ * click records: the token signs a parent in, so it is never stored.
+ */
+export function withoutSignInToken(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!u.pathname.endsWith("/api/dashboard") || !u.searchParams.has("t")) return url;
+    u.searchParams.set("t", "hidden");
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 /** The block in the text/plain part: the headline and the button's link (the letter already greets her). */

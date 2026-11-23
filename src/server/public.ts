@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { campaigns, contactEvents, contactTags, contacts, deliveries, linkClicks, newsletters } from "@/db/schema";
-import { verifyClick } from "@/lib/footer";
+import { verifyClick, withoutSignInToken } from "@/lib/footer";
 import { linksIn } from "@/lib/markdown";
 import { eventRow, MAX_TAGS, newToken, normalizeTags, STATUS_LABEL, type Status } from "./contacts";
 import { deliver, renderConfirmation, renderWelcome } from "./mail";
@@ -211,10 +211,12 @@ export async function trackClick(id: string, url: string, sig = ""): Promise<str
   if (!allowed) return null;
   const now = new Date().toISOString();
   const nid = await newsletterOf(delivery.contactId);
+  // A sign-in link's token is never stored (the personal block's button).
+  const recorded = withoutSignInToken(url);
   await db.batch([
-    db.insert(linkClicks).values({ id: crypto.randomUUID(), deliveryId: id, campaignId: campaign.id, url }),
+    db.insert(linkClicks).values({ id: crypto.randomUUID(), deliveryId: id, campaignId: campaign.id, url: recorded }),
     db.update(deliveries).set({ clickedAt: now }).where(and(eq(deliveries.id, id), isNull(deliveries.clickedAt))),
-    ...(nid ? [db.insert(contactEvents).values(eventRow(delivery.contactId, nid, "clicked", url))] : []),
+    ...(nid ? [db.insert(contactEvents).values(eventRow(delivery.contactId, nid, "clicked", recorded))] : []),
   ]);
   return url;
 }

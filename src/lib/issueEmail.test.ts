@@ -59,7 +59,7 @@ describe("renderIssue with a footer", () => {
     const tracked = [...html.matchAll(/href="https:\/\/studio\.test\/t\/c\/d1\?u=([^"&]+)&amp;s=([0-9a-f]+)"/g)];
     const urls = tracked.map((m) => decodeURIComponent(m[1]!));
     expect(urls).toContain(footer.buttonUrl);
-    expect(urls).toContain(footer.bookshelfUrl);
+    expect(urls).not.toContain(footer.bookshelfUrl);
     for (const m of tracked) {
       expect(await verifyClick("k", "d1", decodeURIComponent(m[1]!), m[2]!)).toBe(true);
     }
@@ -95,10 +95,10 @@ describe("renderTest", () => {
     const email = renderTest(newsletter, campaign, sampleFooter("finish", "Batsirai"));
     expect(email.html).toContain("data-personal-block");
     expect(email.html).not.toContain("Hi Batsirai,");
-    expect(email.html).toContain("Preview Your Child&#39;s Book");
+    expect(email.html).toContain("Finish Your Child&#39;s Book");
     expect(email.html).not.toContain("/t/c/");
     expect(email.html.indexOf("data-personal-block")).toBeLessThan(email.html.indexOf("1 Road, Town"));
-    expect(email.text).toContain("Preview Your Child's Book: https://");
+    expect(email.text).toContain("Finish Your Child's Book: https://");
   });
 });
 

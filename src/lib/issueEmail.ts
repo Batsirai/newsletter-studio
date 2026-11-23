@@ -2,7 +2,7 @@
 // tests can render it without the Worker; src/server/mail.ts sends it.
 
 import { emailLayout } from "./emailLayout";
-import { footerText, newsText, renderFooterBlock, renderNewsLine, sameLink, signClick, type Footer } from "./footer";
+import { footerText, renderFooterBlock, signClick, type Footer } from "./footer";
 import { escapeHtml, mergeTags, renderMarkdown, toPlainText } from "./markdown";
 
 export interface IssueParts {
@@ -35,17 +35,12 @@ export async function renderIssue(p: IssueParts) {
   let blockText = "";
   if (p.footer) {
     const { block: data, key } = p.footer;
-    // The "New from us" line, unless it is this very issue.
-    const news = data.news && !sameLink(data.news.url, p.webUrl) ? data.news : null;
-    const signed = new Map<string, string>();
-    const links = [data.buttonUrl.trim(), data.bookshelfUrl.trim(), ...(news ? [news.url.trim()] : [])];
-    for (const url of new Set(links)) {
-      signed.set(url, `${track(url)}&s=${await signClick(key, p.deliveryId, url)}`);
-    }
-    const tracked = (url: string) => signed.get(url) ?? track(url);
-    block = renderFooterBlock(data, tracked) + (news ? renderNewsLine(news, tracked) : "");
-    const newsLine = news ? newsText(news) : "";
-    blockText = `${footerText(data)}\n${newsLine ? `\n${newsLine}\n` : ""}\n`;
+    // One button per email (founder, 2026-11-21): its link is the only one in the block.
+    const button = data.buttonUrl.trim();
+    const signed = `${track(button)}&s=${await signClick(key, p.deliveryId, button)}`;
+    const tracked = (url: string) => (url === button ? signed : track(url));
+    block = renderFooterBlock(data, tracked);
+    blockText = `${footerText(data)}\n\n`;
   }
   const subject = mergeTags(p.campaign.subject, { first_name: p.contact.firstName });
   return {
