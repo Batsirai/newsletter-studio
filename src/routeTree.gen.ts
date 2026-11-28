@@ -22,6 +22,7 @@ import { Route as NewslettersIdSettingsRouteImport } from './routes/newsletters.
 import { Route as TCIdRouteImport } from './routes/t.c.$id'
 import { Route as TOIdRouteImport } from './routes/t.o.$id'
 import { Route as NSlugConfirmTokenRouteImport } from './routes/n.$slug.confirm.$token'
+import { Route as NSlugJoinTokenRouteImport } from './routes/n.$slug.join.$token'
 import { Route as NSlugPIssueRouteImport } from './routes/n.$slug.p.$issue'
 import { Route as NSlugResubscribeTokenRouteImport } from './routes/n.$slug.resubscribe.$token'
 import { Route as NSlugUnsubscribeTokenRouteImport } from './routes/n.$slug.unsubscribe.$token'
@@ -99,6 +100,11 @@ const NSlugConfirmTokenRoute = NSlugConfirmTokenRouteImport.update({
   path: '/n/$slug/confirm/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NSlugJoinTokenRoute = NSlugJoinTokenRouteImport.update({
+  id: '/n/$slug/join/$token',
+  path: '/n/$slug/join/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NSlugPIssueRoute = NSlugPIssueRouteImport.update({
   id: '/n/$slug/p/$issue',
   path: '/n/$slug/p/$issue',
@@ -171,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/n/$slug/': typeof NSlugIndexRoute
   '/newsletters/$id/': typeof NewslettersIdIndexRoute
   '/n/$slug/confirm/$token': typeof NSlugConfirmTokenRoute
+  '/n/$slug/join/$token': typeof NSlugJoinTokenRoute
   '/n/$slug/p/$issue': typeof NSlugPIssueRoute
   '/n/$slug/resubscribe/$token': typeof NSlugResubscribeTokenRoute
   '/n/$slug/unsubscribe/$token': typeof NSlugUnsubscribeTokenRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/n/$slug': typeof NSlugIndexRoute
   '/newsletters/$id': typeof NewslettersIdIndexRoute
   '/n/$slug/confirm/$token': typeof NSlugConfirmTokenRoute
+  '/n/$slug/join/$token': typeof NSlugJoinTokenRoute
   '/n/$slug/p/$issue': typeof NSlugPIssueRoute
   '/n/$slug/resubscribe/$token': typeof NSlugResubscribeTokenRoute
   '/n/$slug/unsubscribe/$token': typeof NSlugUnsubscribeTokenRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   '/n/$slug/': typeof NSlugIndexRoute
   '/newsletters/$id/': typeof NewslettersIdIndexRoute
   '/n/$slug/confirm/$token': typeof NSlugConfirmTokenRoute
+  '/n/$slug/join/$token': typeof NSlugJoinTokenRoute
   '/n/$slug/p/$issue': typeof NSlugPIssueRoute
   '/n/$slug/resubscribe/$token': typeof NSlugResubscribeTokenRoute
   '/n/$slug/unsubscribe/$token': typeof NSlugUnsubscribeTokenRoute
@@ -249,6 +258,7 @@ export interface FileRouteTypes {
     | '/n/$slug/'
     | '/newsletters/$id/'
     | '/n/$slug/confirm/$token'
+    | '/n/$slug/join/$token'
     | '/n/$slug/p/$issue'
     | '/n/$slug/resubscribe/$token'
     | '/n/$slug/unsubscribe/$token'
@@ -274,6 +284,7 @@ export interface FileRouteTypes {
     | '/n/$slug'
     | '/newsletters/$id'
     | '/n/$slug/confirm/$token'
+    | '/n/$slug/join/$token'
     | '/n/$slug/p/$issue'
     | '/n/$slug/resubscribe/$token'
     | '/n/$slug/unsubscribe/$token'
@@ -299,6 +310,7 @@ export interface FileRouteTypes {
     | '/n/$slug/'
     | '/newsletters/$id/'
     | '/n/$slug/confirm/$token'
+    | '/n/$slug/join/$token'
     | '/n/$slug/p/$issue'
     | '/n/$slug/resubscribe/$token'
     | '/n/$slug/unsubscribe/$token'
@@ -325,6 +337,7 @@ export interface RootRouteChildren {
   NSlugIndexRoute: typeof NSlugIndexRoute
   NewslettersIdIndexRoute: typeof NewslettersIdIndexRoute
   NSlugConfirmTokenRoute: typeof NSlugConfirmTokenRoute
+  NSlugJoinTokenRoute: typeof NSlugJoinTokenRoute
   NSlugPIssueRoute: typeof NSlugPIssueRoute
   NSlugResubscribeTokenRoute: typeof NSlugResubscribeTokenRoute
   NSlugUnsubscribeTokenRoute: typeof NSlugUnsubscribeTokenRoute
@@ -430,6 +443,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NSlugConfirmTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/n/$slug/join/$token': {
+      id: '/n/$slug/join/$token'
+      path: '/n/$slug/join/$token'
+      fullPath: '/n/$slug/join/$token'
+      preLoaderRoute: typeof NSlugJoinTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/n/$slug/p/$issue': {
       id: '/n/$slug/p/$issue'
       path: '/n/$slug/p/$issue'
@@ -517,6 +537,7 @@ const rootRouteChildren: RootRouteChildren = {
   NSlugIndexRoute: NSlugIndexRoute,
   NewslettersIdIndexRoute: NewslettersIdIndexRoute,
   NSlugConfirmTokenRoute: NSlugConfirmTokenRoute,
+  NSlugJoinTokenRoute: NSlugJoinTokenRoute,
   NSlugPIssueRoute: NSlugPIssueRoute,
   NSlugResubscribeTokenRoute: NSlugResubscribeTokenRoute,
   NSlugUnsubscribeTokenRoute: NSlugUnsubscribeTokenRoute,

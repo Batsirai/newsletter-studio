@@ -68,6 +68,8 @@ export const contacts = sqliteTable(
     token: text("token").notNull(),
     createdAt: createdAt(),
     confirmedAt: text("confirmed_at"),
+    // Set only by the authenticated integration confirmation; native choices clear it.
+    activationClaimId: text("activation_claim_id"),
   },
   (t) => [
     uniqueIndex("contacts_newsletter_email").on(t.newsletterId, t.email),
@@ -175,4 +177,49 @@ export const linkClicks = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index("link_clicks_campaign").on(t.campaignId)],
+);
+
+// Durable STOP intent also exists before a claim does. No recipient or token.
+export const signupCancellations = sqliteTable(
+  "signup_cancellations",
+  {
+    newsletterId: text("newsletter_id").notNull(),
+    claimKey: text("claim_key").notNull(),
+    revokedAt: text("revoked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.newsletterId, t.claimKey] })],
+);
+
+// One immutable authenticated signup claim. The contact baseline is captured
+// before any new insertion; existing/suppressed contacts are never reactivated.
+export const signupClaims = sqliteTable(
+  "signup_claims",
+  {
+    id: text("id").primaryKey(),
+    newsletterId: text("newsletter_id").notNull(),
+    claimKey: text("claim_key").notNull(),
+    recipientHash: text("recipient_hash").notNull(),
+    firstRecipient: integer("first_recipient", { mode: "boolean" }).notNull(),
+    contactId: text("contact_id").notNull(),
+    baseline: text("baseline").notNull(), // absent | existing
+    source: text("source").notNull(),
+    variant: text("variant").notNull(),
+    testTraffic: integer("test_traffic", { mode: "boolean" }).notNull(),
+    consentVersion: text("consent_version").notNull(),
+    consentedAt: text("consented_at").notNull(),
+    confirmHash: text("confirm_hash"),
+    revokedAt: text("revoked_at"),
+    confirmedAt: text("confirmed_at"),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("signup_claim_newsletter_key").on(t.newsletterId, t.claimKey),
+    uniqueIndex("signup_claim_confirmation").on(t.confirmHash),
+    index("signup_claim_contact").on(t.newsletterId, t.contactId),
+    index("signup_claim_recipient").on(t.newsletterId, t.recipientHash),
+    uniqueIndex("signup_claim_first_recipient")
+      .on(t.newsletterId, t.recipientHash)
+      .where(sql`${t.firstRecipient} = 1`),
+  ],
 );
