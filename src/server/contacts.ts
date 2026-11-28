@@ -81,6 +81,11 @@ export const bulkInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("segment"), newsletterId: z.string(), ids: z.array(z.string()).min(1).max(PAGE_SIZE), name: z.string().trim().min(1).max(50) }),
 ]);
 
+/** A native/manual choice supersedes any prior integration activation owner. */
+export function nativeStatus(status: Status) {
+  return { status, activationClaimId: null };
+}
+
 /** Which statuses a contact may move to the given one from. */
 export function allowedFrom(to: Status): Status[] {
   switch (to) {
@@ -323,7 +328,7 @@ export async function setStatus(userId: string, input: z.infer<typeof setStatusI
   await db.batch([
     db
       .update(contacts)
-      .set({ status: input.status })
+      .set(nativeStatus(input.status))
       .where(and(eq(contacts.id, row.id), eq(contacts.newsletterId, input.newsletterId))),
     db
       .insert(contactEvents)
@@ -370,7 +375,7 @@ export async function bulk(userId: string, input: z.infer<typeof bulkInput>) {
       const movable = owned.filter((c) => allowedFrom(input.status).includes(c.status as Status));
       if (!movable.length) return { changed: 0 };
       await db.batch([
-        db.update(contacts).set({ status: input.status }).where(and(eq(contacts.newsletterId, nid), inArray(contacts.id, movable.map((c) => c.id)))),
+        db.update(contacts).set(nativeStatus(input.status)).where(and(eq(contacts.newsletterId, nid), inArray(contacts.id, movable.map((c) => c.id)))),
         ...movable.map((c) =>
           db.insert(contactEvents).values(eventRow(c.id, nid, "status", `${STATUS_LABEL[c.status as Status]} → ${STATUS_LABEL[input.status]}`)),
         ),

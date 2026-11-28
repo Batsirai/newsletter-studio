@@ -6,8 +6,9 @@ import {
   contactEvents,
   newsletters,
   signupClaims,
+  signupCancellations,
 } from "@/db/schema";
-import { eventRow, newToken } from "./contacts";
+import { newToken } from "./contacts";
 import { requireNewsletter } from "./newsletters";
 
 export const CONSENT_VERSION = "al-tonight-newsletter-v1";
@@ -38,6 +39,22 @@ export const signupReceiptInput = signupClaimInput
   .strict();
 export type SignupConfig = { newsletterId: string; origin: string };
 type Claim = typeof signupClaims.$inferSelect;
+type SignupResult = {
+  claimKey: string;
+  status: string;
+  newActive: boolean;
+  revokedAt?: string | null;
+  confirmationUrl?: string;
+  publicationId?: string;
+  source?: string;
+  variant?: string;
+  consentVersion?: string;
+  consentedAt?: string;
+  confirmedAt?: string | null;
+  createdAt?: string;
+  baseline?: string;
+  testTraffic?: boolean;
+};
 
 export function signupConfig(env: Record<string, unknown>): SignupConfig {
   const newsletterId = String(env.SIGNUP_NEWSLETTER_ID ?? "");
@@ -68,10 +85,6 @@ async function authorized(
   if (newsletterId !== config.newsletterId)
     throw new Error("Newsletter not found");
   const newsletter = await requireNewsletter(userId, newsletterId);
-  if (!newsletter.confirmOptIn || !newsletter.websiteEnabled)
-    throw new Error(
-      "Signup integration requires confirmation and a public newsletter site",
-    );
   return newsletter;
 }
 function hex(bytes: ArrayBuffer) {
@@ -117,6 +130,67 @@ async function findClaim(newsletterId: string, claimKey: string) {
     );
   return claim ?? null;
 }
+async function cancellation(newsletterId: string, claimKey: string) {
+  const [row] = await db
+    .select()
+    .from(signupCancellations)
+    .where(
+      and(
+        eq(signupCancellations.newsletterId, newsletterId),
+        eq(signupCancellations.claimKey, claimKey),
+      ),
+    );
+  return row
+    ? {
+        claimKey,
+        status: "cancelled" as const,
+        newActive: false,
+        revokedAt: row.revokedAt,
+      }
+    : null;
+}
+function notCancelled(newsletterId: string, claimKey: string) {
+  return sql`not exists (select 1 from signup_cancellations where newsletter_id = ${newsletterId} and claim_key = ${claimKey})`;
+}
+// INSERT SELECT keeps the cancellation check inside the serialized write, not
+// in a preflight read that an in-flight STOP could overtake.
+function insertClaim(claim: Claim) {
+  return db.insert(signupClaims).select(
+    db
+      .select({
+        id: sql<string>`${claim.id}`.as("id"),
+        newsletterId: sql<string>`${claim.newsletterId}`.as("newsletterId"),
+        claimKey: sql<string>`${claim.claimKey}`.as("claimKey"),
+        recipientHash: sql<string>`${claim.recipientHash}`.as("recipientHash"),
+        firstRecipient: sql<boolean>`${Number(claim.firstRecipient)}`.as(
+          "firstRecipient",
+        ),
+        contactId: sql<string>`${claim.contactId}`.as("contactId"),
+        baseline: sql<string>`${claim.baseline}`.as("baseline"),
+        source: sql<string>`${claim.source}`.as("source"),
+        variant: sql<string>`${claim.variant}`.as("variant"),
+        testTraffic: sql<boolean>`${Number(claim.testTraffic)}`.as(
+          "testTraffic",
+        ),
+        consentVersion: sql<string>`${claim.consentVersion}`.as(
+          "consentVersion",
+        ),
+        consentedAt: sql<string>`${claim.consentedAt}`.as("consentedAt"),
+        confirmHash: sql<string | null>`${claim.confirmHash}`.as("confirmHash"),
+        revokedAt: sql<string | null>`${claim.revokedAt}`.as("revokedAt"),
+        confirmedAt: sql<string | null>`${claim.confirmedAt}`.as("confirmedAt"),
+        expiresAt: sql<string>`${claim.expiresAt}`.as("expiresAt"),
+        createdAt: sql<string>`${claim.createdAt}`.as("createdAt"),
+      })
+      .from(newsletters)
+      .where(
+        and(
+          eq(newsletters.id, claim.newsletterId),
+          notCancelled(claim.newsletterId, claim.claimKey),
+        ),
+      ),
+  );
+}
 async function contactFor(claim: Claim) {
   const [contact] = await db
     .select()
@@ -131,15 +205,17 @@ async function contactFor(claim: Claim) {
 }
 async function receipt(claim: Claim) {
   const contact = await contactFor(claim);
-  const status = !contact
-    ? "unknown"
-    : suppressed.has(contact.status)
-      ? "suppressed"
-      : contact.status === "pending"
-        ? "pending"
-        : contact.status === "active"
-          ? "active"
-          : "existing";
+  const status = claim.revokedAt
+    ? "cancelled"
+    : !contact
+      ? "unknown"
+      : suppressed.has(contact.status)
+        ? "suppressed"
+        : contact.status === "pending"
+          ? "pending"
+          : contact.status === "active"
+            ? "active"
+            : "existing";
   return {
     claimKey: claim.claimKey,
     publicationId: claim.newsletterId,
@@ -148,6 +224,7 @@ async function receipt(claim: Claim) {
     consentVersion: claim.consentVersion,
     consentedAt: claim.consentedAt,
     confirmedAt: claim.confirmedAt,
+    revokedAt: claim.revokedAt,
     createdAt: claim.createdAt,
     status,
     baseline: claim.baseline,
@@ -156,13 +233,20 @@ async function receipt(claim: Claim) {
         claim.firstRecipient &&
         claim.confirmedAt &&
         contact?.confirmedAt === claim.confirmedAt &&
+        contact.activationClaimId === claim.id &&
         status === "active" &&
         !claim.testTraffic,
     ),
     testTraffic: claim.testTraffic,
   };
 }
-async function claimResult(claim: Claim, config: SignupConfig, slug: string) {
+async function claimResult(
+  claim: Claim,
+  config: SignupConfig,
+  slug: string,
+): Promise<SignupResult> {
+  const stopped = await cancellation(claim.newsletterId, claim.claimKey);
+  if (stopped && !claim.revokedAt) return stopped;
   const result = await receipt(claim);
   const contact = await contactFor(claim);
   if (claim.confirmedAt && result.status === "pending")
@@ -189,8 +273,17 @@ export async function claimSignup(
   userId: string,
   input: z.infer<typeof signupClaimInput>,
   config: SignupConfig,
-) {
+): Promise<SignupResult> {
   const newsletter = await authorized(userId, input.newsletterId, config);
+  if (!newsletter.confirmOptIn || !newsletter.websiteEnabled)
+    throw new Error(
+      "Signup integration requires confirmation and a public newsletter site",
+    );
+  const stopped = await cancellation(input.newsletterId, input.claimKey);
+  if (stopped) {
+    const cancelledClaim = await findClaim(input.newsletterId, input.claimKey);
+    return cancelledClaim ? receipt(cancelledClaim) : stopped;
+  }
   const old = await findClaim(input.newsletterId, input.claimKey);
   if (old) {
     const contact = await contactFor(old);
@@ -247,6 +340,7 @@ export async function claimSignup(
     testTraffic: input.testTraffic || controlledEmail(input.email),
     consentVersion: input.consentVersion,
     consentedAt: new Date(input.consentedAt).toISOString(),
+    revokedAt: null,
     confirmHash: null,
     confirmedAt: null,
     expiresAt: new Date(now + 3 * DAY).toISOString(),
@@ -255,34 +349,67 @@ export async function claimSignup(
   if (!existing && !historical)
     claim.confirmHash = await tokenHash(await tokenFor(contactToken, claim));
   try {
-    if (existing || historical) await db.insert(signupClaims).values(claim);
+    if (existing || historical) await db.batch([insertClaim(claim)]);
     else
       await db.batch([
-        db.insert(contacts).values({
-          id: contactId,
-          newsletterId: input.newsletterId,
-          email: input.email,
-          firstName: "",
-          status: "pending",
-          source: "embed",
-          token: contactToken,
-          createdAt,
-        }),
-        db.insert(signupClaims).values(claim),
-        db
-          .insert(contactEvents)
-          .values(
-            eventRow(
-              contactId,
-              input.newsletterId,
-              "signup",
-              "Authenticated signup; confirmation pending",
+        db.insert(contacts).select(
+          db
+            .select({
+              id: sql<string>`${contactId}`.as("id"),
+              newsletterId: sql<string>`${input.newsletterId}`.as(
+                "newsletterId",
+              ),
+              email: sql<string>`${input.email}`.as("email"),
+              firstName: sql<string>`''`.as("firstName"),
+              status: sql<string>`'pending'`.as("status"),
+              source: sql<string>`'embed'`.as("source"),
+              fields: sql<string>`'{}'`.as("fields"),
+              token: sql<string>`${contactToken}`.as("token"),
+              createdAt: sql<string>`${createdAt}`.as("createdAt"),
+              confirmedAt: sql<string | null>`null`.as("confirmedAt"),
+              activationClaimId: sql<string | null>`null`.as(
+                "activationClaimId",
+              ),
+            })
+            .from(newsletters)
+            .where(
+              and(
+                eq(newsletters.id, input.newsletterId),
+                notCancelled(input.newsletterId, input.claimKey),
+              ),
             ),
-          ),
+        ),
+        insertClaim(claim),
+        db.insert(contactEvents).select(
+          db
+            .select({
+              id: sql<string>`${crypto.randomUUID()}`.as("id"),
+              contactId: sql<string>`${contactId}`.as("contactId"),
+              newsletterId: sql<string>`${input.newsletterId}`.as(
+                "newsletterId",
+              ),
+              type: sql<string>`'signup'`.as("type"),
+              detail:
+                sql<string>`'Authenticated signup; confirmation pending'`.as(
+                  "detail",
+                ),
+              createdAt: sql<string>`${createdAt}`.as("createdAt"),
+            })
+            .from(signupClaims)
+            .where(
+              and(
+                eq(signupClaims.id, claim.id),
+                eq(signupClaims.newsletterId, input.newsletterId),
+                notCancelled(input.newsletterId, input.claimKey),
+              ),
+            ),
+        ),
       ]);
   } catch {
     // A competing request can win either unique key. Reconcile once; never
     // retry a send (this function has no sender). Other failures stay visible.
+    const stopped = await cancellation(input.newsletterId, input.claimKey);
+    if (stopped) return stopped;
     const prior = await findClaim(input.newsletterId, input.claimKey);
     if (prior) return claimSignup(userId, input, config);
     const [winner] = await db
@@ -306,13 +433,17 @@ export async function claimSignup(
       )
       .limit(1);
     if (winner || reservation) {
-      await db.insert(signupClaims).values({
-        ...claim,
-        contactId: winner?.id ?? reservation.contactId,
-        firstRecipient: false,
-        baseline: "existing",
-        confirmHash: null,
-      });
+      await db.batch([
+        insertClaim({
+          ...claim,
+          contactId: winner?.id ?? reservation.contactId,
+          firstRecipient: false,
+          baseline: "existing",
+          confirmHash: null,
+        }),
+      ]);
+      const stopped = await cancellation(input.newsletterId, input.claimKey);
+      if (stopped) return stopped;
       return claimResult(
         (await findClaim(input.newsletterId, input.claimKey))!,
         config,
@@ -321,7 +452,11 @@ export async function claimSignup(
     }
     throw new Error("Signup storage unavailable");
   }
-  return claimResult(claim, config, newsletter.slug);
+  const saved = await findClaim(input.newsletterId, input.claimKey);
+  if (saved) return claimResult(saved, config, newsletter.slug);
+  const cancelled = await cancellation(input.newsletterId, input.claimKey);
+  if (cancelled) return cancelled;
+  throw new Error("Signup storage unavailable");
 }
 export async function signupReceipt(
   userId: string,
@@ -332,7 +467,11 @@ export async function signupReceipt(
   const claim = await findClaim(input.newsletterId, input.claimKey);
   return claim
     ? receipt(claim)
-    : { claimKey: input.claimKey, status: "unknown", newActive: false };
+    : ((await cancellation(input.newsletterId, input.claimKey)) ?? {
+        claimKey: input.claimKey,
+        status: "unknown",
+        newActive: false,
+      });
 }
 
 /** Token lookup is read-only: a GET or mail scanner must never activate. */
@@ -394,14 +533,15 @@ export async function confirmSignup(
   await db.batch([
     db
       .update(contacts)
-      .set({ status: "active", confirmedAt: now })
+      .set({ status: "active", confirmedAt: now, activationClaimId: claim.id })
       .where(
         and(
           eq(contacts.id, claim.contactId),
           eq(contacts.newsletterId, claim.newsletterId),
           eq(contacts.status, "pending"),
+          notCancelled(claim.newsletterId, claim.claimKey),
           // Recheck consumption/expiry at the write, not just the earlier view.
-          sql`exists (select 1 from signup_claims where id = ${claim.id} and newsletter_id = ${claim.newsletterId} and contact_id = ${claim.contactId} and confirmed_at is null and expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+          sql`exists (select 1 from signup_claims where id = ${claim.id} and newsletter_id = ${claim.newsletterId} and contact_id = ${claim.contactId} and confirmed_at is null and revoked_at is null and expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
         ),
       ),
     db
@@ -412,6 +552,7 @@ export async function confirmSignup(
           eq(signupClaims.id, claim.id),
           eq(signupClaims.newsletterId, claim.newsletterId),
           isNull(signupClaims.confirmedAt),
+          isNull(signupClaims.revokedAt),
           // The preceding conditional UPDATE must have changed this row in
           // this batch. Equal timestamps are not transition ownership proof.
           sql`changes() = 1`,
@@ -442,4 +583,54 @@ export async function confirmSignup(
       .onConflictDoNothing(),
   ]);
   return confirmationView(slug, token, config);
+}
+
+/** STOP cancels this request, never an unrelated existing subscription. */
+export async function cancelSignup(
+  userId: string,
+  input: z.infer<typeof signupReceiptInput>,
+  config: SignupConfig,
+) {
+  await authorized(userId, input.newsletterId, config);
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .insert(signupCancellations)
+      .values({
+        newsletterId: input.newsletterId,
+        claimKey: input.claimKey,
+        revokedAt: now,
+      })
+      .onConflictDoNothing(),
+    // Always revoke by scoped key, even if a preflight lookup would have found
+    // nothing. This shares a transaction with the durable cancellation intent.
+    db
+      .update(signupClaims)
+      .set({
+        revokedAt: sql`(select revoked_at from signup_cancellations where newsletter_id = ${input.newsletterId} and claim_key = ${input.claimKey})`,
+      })
+      .where(
+        and(
+          eq(signupClaims.newsletterId, input.newsletterId),
+          eq(signupClaims.claimKey, input.claimKey),
+          isNull(signupClaims.revokedAt),
+        ),
+      ),
+    db
+      .update(contacts)
+      .set({ status: "unsubscribed", activationClaimId: null })
+      .where(
+        and(
+          eq(contacts.newsletterId, input.newsletterId),
+          // Only the first claim revocation may affect its own current activation.
+          // A repeated STOP never takes ownership of a later native choice.
+          sql`changes() = 1`,
+          sql`exists (select 1 from signup_claims s where s.newsletter_id = ${input.newsletterId} and s.claim_key = ${input.claimKey} and s.contact_id = contacts.id and s.baseline = 'absent' and s.first_recipient = 1 and s.revoked_at is not null and contacts.status = 'active' and contacts.activation_claim_id = s.id and s.confirmed_at is not null and contacts.confirmed_at = s.confirmed_at)`,
+        ),
+      ),
+  ]);
+  const claim = await findClaim(input.newsletterId, input.claimKey);
+  return claim
+    ? receipt(claim)
+    : (await cancellation(input.newsletterId, input.claimKey))!;
 }

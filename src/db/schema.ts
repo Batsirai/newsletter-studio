@@ -68,6 +68,8 @@ export const contacts = sqliteTable(
     token: text("token").notNull(),
     createdAt: createdAt(),
     confirmedAt: text("confirmed_at"),
+    // Set only by the authenticated integration confirmation; native choices clear it.
+    activationClaimId: text("activation_claim_id"),
   },
   (t) => [
     uniqueIndex("contacts_newsletter_email").on(t.newsletterId, t.email),
@@ -177,6 +179,17 @@ export const linkClicks = sqliteTable(
   (t) => [index("link_clicks_campaign").on(t.campaignId)],
 );
 
+// Durable STOP intent also exists before a claim does. No recipient or token.
+export const signupCancellations = sqliteTable(
+  "signup_cancellations",
+  {
+    newsletterId: text("newsletter_id").notNull(),
+    claimKey: text("claim_key").notNull(),
+    revokedAt: text("revoked_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.newsletterId, t.claimKey] })],
+);
+
 // One immutable authenticated signup claim. The contact baseline is captured
 // before any new insertion; existing/suppressed contacts are never reactivated.
 export const signupClaims = sqliteTable(
@@ -195,6 +208,7 @@ export const signupClaims = sqliteTable(
     consentVersion: text("consent_version").notNull(),
     consentedAt: text("consented_at").notNull(),
     confirmHash: text("confirm_hash"),
+    revokedAt: text("revoked_at"),
     confirmedAt: text("confirmed_at"),
     expiresAt: text("expires_at").notNull(),
     createdAt: createdAt(),

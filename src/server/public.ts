@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { campaigns, contactEvents, contactTags, contacts, deliveries, linkClicks, newsletters } from "@/db/schema";
 import { linksIn } from "@/lib/markdown";
-import { eventRow, MAX_TAGS, newToken, normalizeTags, STATUS_LABEL, type Status } from "./contacts";
+import { eventRow, MAX_TAGS, nativeStatus, newToken, normalizeTags, STATUS_LABEL, type Status } from "./contacts";
 import { deliver, renderConfirmation, renderWelcome } from "./mail";
 import type { Newsletter } from "./newsletters";
 
@@ -85,7 +85,7 @@ export async function subscribe(slug: string, input: z.infer<typeof signupInput>
     const owned = new Set(have.map((t) => t.tag));
     const room = tags.filter((t) => !owned.has(t)).slice(0, Math.max(0, MAX_TAGS - owned.size));
     await db.batch([
-      db.update(contacts).set({ firstName, status: next }).where(eq(contacts.id, existing.id)),
+      db.update(contacts).set({ firstName, ...(next !== status ? nativeStatus(next) : {}) }).where(eq(contacts.id, existing.id)),
       ...room.map((tag) => db.insert(contactTags).values({ contactId: existing.id, newsletterId: newsletter.id, tag }).onConflictDoNothing()),
       ...(next !== status ? [db.insert(contactEvents).values(eventRow(existing.id, newsletter.id, "status", `${STATUS_LABEL[status]} → ${STATUS_LABEL[next]} (signed up again)`))] : []),
     ]);
@@ -132,7 +132,7 @@ export async function confirmSubscription(slug: string, token: string, origin: s
   const { contact, newsletter } = found;
   if (contact.status === "pending") {
     await db.batch([
-      db.update(contacts).set({ status: "active", confirmedAt: new Date().toISOString() }).where(eq(contacts.id, contact.id)),
+      db.update(contacts).set({ ...nativeStatus("active"), confirmedAt: new Date().toISOString() }).where(eq(contacts.id, contact.id)),
       db.insert(contactEvents).values(eventRow(contact.id, newsletter.id, "status", "Pending → Active (confirmed)")),
     ]);
     if (newsletter.welcomeEnabled) await deliver(newsletter, { to: contact.email, ...renderWelcome(newsletter, contact, origin) }, true);
@@ -147,7 +147,7 @@ export async function unsubscribe(slug: string, token: string, deliveryId: strin
   if (["active", "dormant", "pending"].includes(contact.status)) {
     const now = new Date().toISOString();
     await db.batch([
-      db.update(contacts).set({ status: "unsubscribed" }).where(eq(contacts.id, contact.id)),
+      db.update(contacts).set(nativeStatus("unsubscribed")).where(eq(contacts.id, contact.id)),
       db.insert(contactEvents).values(eventRow(contact.id, newsletter.id, "status", `${STATUS_LABEL[contact.status as Status]} → Unsubscribed`)),
       ...(deliveryId
         ? [db.update(deliveries).set({ unsubscribedAt: now }).where(and(eq(deliveries.id, deliveryId), eq(deliveries.contactId, contact.id), isNull(deliveries.unsubscribedAt)))]
@@ -163,7 +163,7 @@ export async function resubscribe(slug: string, token: string) {
   const { contact, newsletter } = found;
   if (contact.status === "unsubscribed") {
     await db.batch([
-      db.update(contacts).set({ status: "active" }).where(eq(contacts.id, contact.id)),
+      db.update(contacts).set(nativeStatus("active")).where(eq(contacts.id, contact.id)),
       db.insert(contactEvents).values(eventRow(contact.id, newsletter.id, "status", "Unsubscribed → Active (resubscribed)")),
     ]);
   }

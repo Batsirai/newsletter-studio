@@ -1,6 +1,7 @@
 import { defineTools, ToolError } from "@every-app/sdk/server";
 import {
   claimSignup,
+  cancelSignup,
   signupReceipt,
   signupClaimInput,
   signupReceiptInput,
@@ -20,6 +21,22 @@ async function safe<T>(work: () => Promise<T>): Promise<T> {
 }
 export const tools = defineTools(
   {
+    cancel_signup: {
+      description:
+        "Cancel one integration signup after a verified STOP. Revokes its pending confirmation and unsubscribes only a contact originally created and confirmed by that claim. Existing baseline subscriptions stay unchanged. No email is sent.",
+      risk: "write",
+      destructive: true,
+      idempotent: true,
+      input: signupReceiptInput,
+      handler: (input, { user, env }) =>
+        safe(() =>
+          cancelSignup(
+            user.id,
+            input,
+            signupConfig(env as unknown as Record<string, unknown>),
+          ),
+        ),
+    },
     claim_signup: {
       description:
         "Record one explicit newsletter choice as a pending signup for the configured owned publication. Returns a private confirmation URL only for a new pending claim. Does not send mail or reactivate contacts. Keep the same claim key and original arguments on retry; never log the email or confirmation URL.",

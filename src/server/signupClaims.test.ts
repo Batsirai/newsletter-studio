@@ -25,6 +25,7 @@ vi.mock("./mail", () => ({
 }));
 const {
   claimSignup,
+  cancelSignup,
   signupReceipt,
   confirmationView,
   confirmSignup,
@@ -579,6 +580,441 @@ describe("consumed token concurrency", () => {
   });
 });
 
+describe("scoped STOP reconciliation", () => {
+  const ref = () => ({
+    newsletterId: config.newsletterId,
+    claimKey: input().claimKey,
+  });
+  it.each([false, true])(
+    "revokes a claim before or after its own confirmation (%s)",
+    async (confirmed) => {
+      const args = input(),
+        result = await claimSignup("owner", args, config);
+      if (confirmed) await confirmSignup("letters", token(result), config);
+      const stopped = await cancelSignup("owner", ref(), config);
+      expect(stopped).toMatchObject({ status: "cancelled", newActive: false });
+      expect(await status()).toBe(confirmed ? "unsubscribed" : "pending");
+      expect(
+        await confirmSignup("letters", token(result), config),
+      ).toMatchObject({ status: "cancelled" });
+      expect(await claimSignup("owner", args, config)).not.toHaveProperty(
+        "confirmationUrl",
+      );
+      expect(await cancelSignup("owner", ref(), config)).toEqual(stopped);
+    },
+  );
+  it("never unsubscribes a pre-existing baseline contact", async () => {
+    await db.insert(schema.contacts).values({
+      id: "prior",
+      newsletterId: config.newsletterId,
+      email: input().email,
+      status: "active",
+      source: "manual",
+      token: "existing-token",
+    });
+    await claim();
+    await cancelSignup("owner", ref(), config);
+    expect(await status()).toBe("active");
+  });
+  it("does not undo a later independent activation with a different confirmation proof", async () => {
+    const result = await claim();
+    await confirmSignup("letters", token(result), config);
+    await db.update(schema.contacts).set({
+      status: "active",
+      confirmedAt: new Date(Date.now() + 1000).toISOString(),
+    });
+    await cancelSignup("owner", ref(), config);
+    expect(await status()).toBe("active");
+  });
+  it("can cancel even if new signups or the public site have been switched off", async () => {
+    await claim();
+    await db
+      .update(schema.newsletters)
+      .set({ websiteEnabled: false, confirmOptIn: false })
+      .where(eq(schema.newsletters.id, config.newsletterId));
+    expect(await cancelSignup("owner", ref(), config)).toMatchObject({
+      status: "cancelled",
+    });
+    expect(await status()).toBe("pending");
+  });
+  it("another owner cannot cancel a claim", async () => {
+    await claim();
+    await expect(cancelSignup("other", ref(), config)).rejects.toThrow(
+      "not found",
+    );
+    expect(await status()).toBe("pending");
+  });
+  it("a confirmation paused before STOP cannot activate afterward", async () => {
+    const result = await claim();
+    let release!: () => void,
+      reached!: () => void,
+      pause = true;
+    const wait = new Promise<void>((r) => {
+        release = r;
+      }),
+      entering = new Promise<void>((r) => {
+        reached = r;
+      });
+    fixtureDb.current = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key === "batch")
+          return async (queries: Parameters<typeof db.batch>[0]) => {
+            if (pause) {
+              pause = false;
+              reached();
+              await wait;
+            }
+            return db.batch(queries);
+          };
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const pending = confirmSignup("letters", token(result), config);
+    await entering;
+    await cancelSignup("owner", ref(), config);
+    release();
+    await pending;
+    expect(await status()).toBe("pending");
+    expect(
+      (await db.select().from(schema.signupClaims))[0].confirmedAt,
+    ).toBeNull();
+  });
+  it("STOP paused before confirmation still unsubscribes only this claim's resulting activation", async () => {
+    const result = await claim();
+    let release!: () => void,
+      reached!: () => void,
+      pause = true;
+    const wait = new Promise<void>((r) => {
+        release = r;
+      }),
+      entering = new Promise<void>((r) => {
+        reached = r;
+      });
+    fixtureDb.current = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key === "batch")
+          return async (queries: Parameters<typeof db.batch>[0]) => {
+            if (pause) {
+              pause = false;
+              reached();
+              await wait;
+            }
+            return db.batch(queries);
+          };
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const pending = cancelSignup("owner", ref(), config);
+    await entering;
+    await confirmSignup("letters", token(result), config);
+    expect(await status()).toBe("active");
+    release();
+    await pending;
+    expect(await status()).toBe("unsubscribed");
+    expect(await signupReceipt("owner", ref(), config)).toMatchObject({
+      status: "cancelled",
+      newActive: false,
+    });
+  });
+});
+
+describe("stale STOP retry", () => {
+  it("cannot undo a later native confirmation, even at the original timestamp", async () => {
+    const { subscribe, confirmSubscription } = await import("./public");
+    const fixed = new Date();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(fixed);
+    const result = await claim();
+    await confirmSignup("letters", token(result), config);
+    const ref = {
+      newsletterId: config.newsletterId,
+      claimKey: input().claimKey,
+    };
+    await cancelSignup("owner", ref, config);
+    await subscribe(
+      "letters",
+      { email: input().email, firstName: "", source: "website", tags: [] },
+      config.origin,
+    );
+    const contact = (await db.select().from(schema.contacts))[0];
+    await confirmSubscription("letters", contact.token, config.origin);
+    expect(await status()).toBe("active");
+    await cancelSignup("owner", ref, config);
+    expect(await status()).toBe("active");
+    expect(await signupReceipt("owner", ref, config)).toMatchObject({
+      status: "cancelled",
+      newActive: false,
+    });
+  });
+});
+
+describe("native activation ownership", () => {
+  it("the first delayed STOP cannot undo a native unsubscribe and resubscribe", async () => {
+    const { unsubscribe, resubscribe } = await import("./public");
+    const result = await claim();
+    await confirmSignup("letters", token(result), config);
+    const contact = (await db.select().from(schema.contacts))[0];
+    await unsubscribe("letters", contact.token, null);
+    await resubscribe("letters", contact.token);
+    expect(await status()).toBe("active");
+    await cancelSignup(
+      "owner",
+      { newsletterId: config.newsletterId, claimKey: input().claimKey },
+      config,
+    );
+    expect(await status()).toBe("active");
+  });
+});
+
+describe("all native status owners", () => {
+  it.each(["single", "bulk"] as const)(
+    "a %s manual status choice clears integration activation ownership",
+    async (mode) => {
+      const { setStatus, bulk } = await import("./contacts");
+      const result = await claim();
+      await confirmSignup("letters", token(result), config);
+      const contact = (await db.select().from(schema.contacts))[0];
+      for (const desired of ["dormant", "active"] as const) {
+        if (mode === "single")
+          await setStatus("owner", {
+            newsletterId: config.newsletterId,
+            contactId: contact.id,
+            status: desired,
+          });
+        else
+          await bulk("owner", {
+            action: "status",
+            newsletterId: config.newsletterId,
+            ids: [contact.id],
+            status: desired,
+          });
+      }
+      expect(
+        (await db.select().from(schema.contacts))[0].activationClaimId,
+      ).toBeNull();
+      await cancelSignup(
+        "owner",
+        { newsletterId: config.newsletterId, claimKey: input().claimKey },
+        config,
+      );
+      expect(await status()).toBe("active");
+    },
+  );
+});
+
+describe("unverified native no-op", () => {
+  it("a public no-op paused before STOP cannot reactivate the contact afterward", async () => {
+    const { subscribe } = await import("./public");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date());
+    const result = await claim();
+    await confirmSignup("letters", token(result), config);
+    let release!: () => void,
+      reached!: () => void,
+      pause = true;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entering = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    fixtureDb.current = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key === "batch")
+          return async (queries: Parameters<typeof db.batch>[0]) => {
+            if (pause) {
+              pause = false;
+              reached();
+              await wait;
+            }
+            return db.batch(queries);
+          };
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const delayed = subscribe(
+      "letters",
+      { email: input().email, firstName: "", source: "website", tags: [] },
+      config.origin,
+    );
+    await entering;
+    const ref = {
+      newsletterId: config.newsletterId,
+      claimKey: input().claimKey,
+    };
+    try {
+      expect(await cancelSignup("owner", ref, config)).toMatchObject({
+        status: "cancelled",
+        newActive: false,
+      });
+      expect(await status()).toBe("unsubscribed");
+    } finally {
+      release();
+      await delayed;
+    }
+    expect(await status()).toBe("unsubscribed");
+    expect(
+      (await db.select().from(schema.contacts))[0].activationClaimId,
+    ).toBeNull();
+    expect(await signupReceipt("owner", ref, config)).toMatchObject({
+      status: "cancelled",
+      newActive: false,
+    });
+  });
+  it("a public signup for an already-active email cannot erase activation ownership", async () => {
+    const { subscribe } = await import("./public");
+    const result = await claim();
+    await confirmSignup("letters", token(result), config);
+    await subscribe(
+      "letters",
+      { email: input().email, firstName: "", source: "website", tags: [] },
+      config.origin,
+    );
+    const ref = {
+      newsletterId: config.newsletterId,
+      claimKey: input().claimKey,
+    };
+    expect(await signupReceipt("owner", ref, config)).toMatchObject({
+      newActive: true,
+    });
+    await cancelSignup("owner", ref, config);
+    expect(await status()).toBe("unsubscribed");
+  });
+});
+
+describe("STOP before claim creation", () => {
+  const ref = () => ({
+    newsletterId: config.newsletterId,
+    claimKey: input().claimKey,
+  });
+  it("durably cancels an unknown claim and reconciles it without private data", async () => {
+    const stopped = await cancelSignup("owner", ref(), config);
+    expect(stopped).toMatchObject({ status: "cancelled", newActive: false });
+    expect(await cancelSignup("owner", ref(), config)).toEqual(stopped);
+    expect(await signupReceipt("owner", ref(), config)).toEqual(stopped);
+    expect(await claim()).toEqual(stopped);
+    expect(stopped).not.toHaveProperty("confirmationUrl");
+    expect(JSON.stringify(stopped)).not.toContain(input().email);
+    expect(await db.select().from(schema.contacts)).toHaveLength(0);
+    expect(await db.select().from(schema.signupClaims)).toHaveLength(0);
+    expect(await db.select().from(schema.contactEvents)).toHaveLength(0);
+    expect(await db.select().from(schema.signupCancellations)).toEqual([
+      {
+        newsletterId: config.newsletterId,
+        claimKey: ref().claimKey,
+        revokedAt: stopped.revokedAt,
+      },
+    ]);
+  });
+  it.each(["new", "existing", "historical"] as const)(
+    "STOP wins while a %s claim is paused before its insertion batch",
+    async (baseline) => {
+      if (baseline === "existing")
+        await db.insert(schema.contacts).values({
+          id: "native-contact",
+          newsletterId: config.newsletterId,
+          email: input().email,
+          status: "active",
+          source: "manual",
+          token: "native-token",
+        });
+      if (baseline === "historical") {
+        await claimSignup(
+          "owner",
+          { ...input(), claimKey: "old_claim_0000" },
+          config,
+        );
+        await db.delete(schema.contacts);
+      }
+      let release!: () => void,
+        reached!: () => void,
+        pause = true;
+      const wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entering = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      fixtureDb.current = new Proxy(db, {
+        get(target, key, receiver) {
+          if (key === "batch")
+            return async (queries: Parameters<typeof db.batch>[0]) => {
+              if (pause) {
+                pause = false;
+                reached();
+                await wait;
+              }
+              return db.batch(queries);
+            };
+          const value = Reflect.get(target, key, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const delayed = claim();
+      await entering;
+      let stopped: Awaited<ReturnType<typeof cancelSignup>>;
+      try {
+        stopped = await cancelSignup("owner", ref(), config);
+      } finally {
+        release();
+      }
+      expect(await delayed).toEqual(stopped!);
+      expect(stopped!).toMatchObject({ status: "cancelled", newActive: false });
+      expect(await signupReceipt("owner", ref(), config)).toEqual(stopped!);
+      expect(
+        (await db.select().from(schema.signupClaims)).some(
+          (c) => c.claimKey === ref().claimKey,
+        ),
+      ).toBe(false);
+      expect(await db.select().from(schema.contacts)).toHaveLength(
+        baseline === "existing" ? 1 : 0,
+      );
+      if (baseline === "existing") expect(await status()).toBe("active");
+    },
+  );
+  it("concurrent repeated cancellations stay stable and allow a distinct future claim key", async () => {
+    const [a, b] = await Promise.all([
+      cancelSignup("owner", ref(), config),
+      cancelSignup("owner", ref(), config),
+    ]);
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ status: "cancelled" });
+    const fresh = await claimSignup(
+      "owner",
+      { ...input(), claimKey: "fresh_choice_0002" },
+      config,
+    );
+    expect(fresh).toMatchObject({ status: "pending", newActive: false });
+    expect(fresh).toHaveProperty("confirmationUrl");
+    expect(await signupReceipt("owner", ref(), config)).toEqual(a);
+  });
+  it("does not permit another owner or publication to reserve a cancellation", async () => {
+    await expect(cancelSignup("other", ref(), config)).rejects.toThrow(
+      "not found",
+    );
+    await expect(
+      cancelSignup(
+        "owner",
+        { ...ref(), newsletterId: "publication-2" },
+        config,
+      ),
+    ).rejects.toThrow("not found");
+    expect(await claim()).toMatchObject({ status: "pending" });
+  });
+  it("cancellation and its receipt remain available when new signup gates are off", async () => {
+    await db
+      .update(schema.newsletters)
+      .set({ websiteEnabled: false, confirmOptIn: false })
+      .where(eq(schema.newsletters.id, config.newsletterId));
+    const stopped = await cancelSignup("owner", ref(), config);
+    expect(stopped).toMatchObject({ status: "cancelled" });
+    expect(await signupReceipt("owner", ref(), config)).toEqual(stopped);
+  });
+});
+
 describe("Gateway tools", () => {
   const env = () =>
     testEnv({
@@ -588,6 +1024,7 @@ describe("Gateway tools", () => {
   it("declares honest risks and refuses a read-only connection's write", async () => {
     expect((await listTools(tools)).tools.map((t) => [t.name, t.risk])).toEqual(
       [
+        ["cancel_signup", "write"],
         ["claim_signup", "write"],
         ["signup_receipt", "read"],
       ],

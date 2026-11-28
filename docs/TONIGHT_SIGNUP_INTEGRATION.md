@@ -20,6 +20,10 @@ The consumed-token regression also pauses an old confirmation while a newer requ
 
 ## Accepted local checks
 
-59 tests pass (29 new SQLite/SDK/confirmation tests plus 30 existing tests), production build and `pnpm types:check` pass, changed-file Prettier passes, and the EveryApp security review found no remaining actionable issue after the three repairs. Tests mock mail and use an isolated in-memory database. No live Gateway tool call, D1 migration, signup, email, feature configuration or token provisioning occurred.
+80 tests pass (50 SQLite/SDK/confirmation tests plus 30 existing tests), `pnpm build` and `pnpm types:check` pass. Tests mock mail and use an isolated in-memory database. No live Gateway tool call, D1 migration, signup, email, feature configuration or token provisioning occurred.
+
+`cancel_signup` persists publication/claim-key cancellation intent even when the claim has not committed. Migration 0003 adds this record with only the scoped key and original revocation timestamp. Contact, claim and event insertion all check cancellation inside their transaction; conflict reconciliation uses the same guarded claim insertion. Unknown cancelled keys return stable `cancelled` receipts without an email or confirmation URL. Confirmation rechecks cancellation at its write. Keep cancellation records while their keys can be replayed; a later explicit choice uses a new claim key.
+
+Cancellation affects only an activation owned by that claim. Native confirmed or authenticated status choices clear the ownership marker. Public signup with an unchanged status preserves it and writes no status, so an in-flight no-op cannot undo STOP. Regressions cover both cancellation/confirmation orderings, first and repeated STOP, native reactivation, delayed public no-ops, and STOP overtaking insertion for new, existing and previously deleted contacts.
 
 Still held before the complete Instagram flow ships: live tool deployment/configuration and app-bound credentials; AlreadyLoved caller/guide/email wiring; STOP reconciliation with an outstanding newsletter claim; and hosted browser/provider checks. These local receipts do not prove a production signup or delivered message.
